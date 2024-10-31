@@ -1,0 +1,14 @@
+llama-cpp-python>=0.2.11
+langchain
+langchain_community
+fastapi
+aiohttp
+uvicorn
+pillow
+diffusers
+transformers
+torch
+python-slugify
+pytesseract
+accelerate
+sentencepiece

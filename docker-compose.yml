@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:latest
+    container_name: kpwbai_mongo
+    ports:
+      - "27021:27017"
+    volumes:
+      - ./MongoDb/Db/:/data/db
+    networks:
+      - kapweb_ai
+networks:
+  kapweb_ai:
+    driver: bridge

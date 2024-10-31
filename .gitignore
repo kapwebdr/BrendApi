@@ -1,0 +1,13 @@
+Cache/*
+brenda/*
+brendapi/*
+MongoDB/Db/*
+Outputs/*
+Project.txt  
+Test.*
+.DS_Store
+History/*
+KaSpaCy/*
+__pycache__/
+*.npz
+# static/*

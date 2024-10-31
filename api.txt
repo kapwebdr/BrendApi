@@ -1,0 +1,271 @@
+API BRENDA - Documentation des Endpoints
+======================================
+
+Configuration CORS
+----------------
+L'API accepte les requêtes de toutes les origines (CORS activé) avec :
+- Toutes les origines autorisées (*)
+- Toutes les méthodes HTTP autorisées
+- Tous les headers autorisés
+- Support des credentials
+- Tous les headers exposés
+
+1. Liste des Modèles
+-------------------
+Endpoint : GET /v1/models
+Description : Récupère la liste des modèles disponibles
+Retour : 
+{
+    "models": ["Vigogne-2-13B", "CodeLlama-13B", "Llama-2-13B", ...]
+}
+
+2. Chargement d'un Modèle
+------------------------
+Endpoint : POST /v1/models/{model_name}/load
+Paramètres URL :
+- model_name : Nom du modèle à charger (string)
+
+Retour : Stream d'événements SSE (text/event-stream)
+Événements possibles :
+- {"progress": 0.45}            // Progression du téléchargement (0 à 1)
+- {"status": "exists"}          // Si le modèle existe déjà
+- {"status": "completed"}       // Téléchargement terminé
+- {"status": "loaded"}          // Modèle chargé avec succès
+- {"error": "message d'erreur"} // En cas d'erreur
+
+3. Chat Completions
+------------------
+Endpoint : POST /v1/chat/completions
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "model": string,        // Nom du modèle à utiliser
+    "messages": [           // Historique des messages
+        {
+            "role": string, // "system", "user", "assistant" ou "ai"
+            "content": string
+        }
+    ],
+    "stream": boolean,      // Mode streaming (optionnel, défaut: false)
+    "system": string       // Message système pour cette requête
+}
+
+Notes sur le système :
+- Le message système est fourni dans chaque requête
+- Il remplace tout message système précédent
+- Si non fourni, utilise un message système par défaut
+
+Retours possibles :
+
+A. Mode non-streaming (stream: false)
+Content-Type : application/json
+{
+    "choices": [
+        {
+            "message": {
+                "role": "assistant",
+                "content": string
+            }
+        }
+    ]
+}
+
+B. Mode streaming (stream: true)
+Content-Type : text/event-stream
+Format : 
+data: {chunk de texte}
+data: {chunk de texte}
+...
+data: [DONE]
+
+Codes d'erreur :
+- 400 : Aucun modèle n'est chargé
+- 404 : Modèle non trouvé
+- 500 : Erreur interne du serveur
+
+Notes :
+-------
+- Les modèles sont téléchargés depuis Hugging Face automatiquement si nécessaire
+- Le streaming est compatible avec le format des événements SSE
+- L'API est conçue pour être compatible avec l'API OpenAI
+- Les modèles sont stockés dans le dossier Cache/LlamaCppModel
+- Les configurations des modèles sont stockées dans models.json
+
+Gestion des Sessions
+------------------
+L'API utilise un header X-Session-ID pour gérer les sessions :
+- Si le header X-Session-ID n'est pas fourni, un nouveau ID de session est généré
+- Si le header X-Session-ID est fourni, la session existante est utilisée
+- L'ID de session est retourné dans le header X-Session-ID de chaque réponse
+- Les clients doivent stocker cet ID et le renvoyer dans les requêtes suivantes
+
+Exemple d'utilisation :
+1. Première requête : pas de X-Session-ID envoyé -> nouveau ID généré et retourné
+2. Requêtes suivantes : envoyer le X-Session-ID reçu dans le header
+3. L'API maintient l'état de la session (modèle chargé, etc.) tant que le même ID est utilisé
+
+4. État de la Session
+-------------------
+Endpoint : GET /v1/session
+Description : Récupère l'état actuel de la session
+Retour :
+{
+    "session_id": string,
+    "current_model": string | null,
+    "has_model_loaded": boolean
+}
+
+5. Arrêt de la Génération
+------------------------
+Endpoint : POST /v1/stop
+Description : Arrête la génération en cours pour la session
+
+Headers requis :
+- X-Session-ID : ID de la session pour laquelle arrêter la génération
+
+Retour :
+Content-Type : application/json
+{
+    "status": "stopped"
+}
+
+Codes d'erreur :
+- 400 : Aucun modèle n'est chargé pour cette session
+- 500 : Erreur lors de l'arrêt de la génération
+
+Notes :
+- L'arrêt est immédiat
+- La session reste valide et peut être réutilisée pour de nouvelles requêtes
+- L'historique de la conversation est conservé
+
+6. Génération et Analyse d'Images
+--------------------------------
+
+Format des Images :
+Pour tous les endpoints qui nécessitent une image en entrée, l'image doit être envoyée en base64.
+Format attendu : "data:image/png;base64,{base64_string}" ou directement la chaîne base64.
+
+6.1 Génération d'Images
+----------------------
+Endpoint : POST /v1/images/generate
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "model_type": string,     // Type de modèle (défaut: "sdxl-turbo")
+    "prompt": string,         // Description de l'image à générer
+    "negative_prompt": string, // Prompt négatif (optionnel)
+    "width": integer,         // Largeur de l'image (optionnel, défaut: 1024)
+    "height": integer,        // Hauteur de l'image (optionnel, défaut: 1024)
+    "steps": integer          // Nombre d'étapes de génération (optionnel, défaut: 20)
+}
+
+Retour : Stream d'événements SSE
+Événements possibles :
+- {"progress": 0.45}       // Progression de la génération (0 à 1)
+- {"status": "completed", "image": "base64..."} // Image générée en base64
+- {"error": "message"}     // En cas d'erreur
+
+6.2 Liste des Modèles d'Images
+----------------------------
+Endpoint : GET /v1/images/models
+Description : Liste les modèles de génération d'images disponibles
+
+Retour :
+{
+    "models": ["sdxl-turbo", "sdxl-base", ...]
+}
+
+6.3 Analyse d'Image (CLIP)
+------------------------
+Endpoint : POST /v1/images/analyze
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "image": string,     // Image en base64
+    "labels": [string]   // Liste des labels à vérifier
+}
+
+Exemple :
+{
+    "image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+    "labels": ["chat", "chien", "oiseau"]
+}
+
+6.4 OCR (Extraction de Texte)
+---------------------------
+Endpoint : POST /v1/images/ocr
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "image": string  // Image en base64
+}
+
+6.5 Raffinement d'Image
+----------------------
+Endpoint : POST /v1/images/refine
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "image": string,         // Image source en base64
+    "prompt": string,        // Description pour le raffinement
+    "negative_prompt": string, // Prompt négatif (optionnel)
+    "strength": float,       // Force du raffinement (0-1, défaut: 0.3)
+    "steps": integer         // Nombre d'étapes (optionnel, défaut: 20)
+}
+
+Notes sur la Gestion des Images :
+-------------------------------
+- Toutes les images doivent être envoyées en base64
+- Format accepté : "data:image/png;base64,..." ou chaîne base64 pure
+- Taille maximale recommandée : 10MB
+- Formats d'image supportés : PNG, JPEG, WebP
+- Les images générées sont toujours retournées en base64 (PNG)
+
+Exemple de conversion côté client (JavaScript) :
+
+7. Traduction
+------------
+
+7.1 Liste des Langues
+-------------------
+Endpoint : GET /v1/translation/languages
+Description : Récupère la liste des langues disponibles pour la traduction
+
+Retour :
+{
+    "languages": {
+        "en": ["fr", "es", "de", "it"],
+        "fr": ["en", "es", "de", "it"],
+        ...
+    }
+}
+
+7.2 Traduction de Texte
+---------------------
+Endpoint : POST /v1/translation/translate
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "text": string,      // Texte à traduire
+    "from_lang": string, // Langue source (ex: "en")
+    "to_lang": string    // Langue cible (ex: "fr")
+}
+
+Retour :
+{
+    "translated_text": string, // Texte traduit
+    "from": string,           // Langue source
+    "to": string             // Langue cible
+}
+
+Notes sur la Traduction :
+- Utilise les modèles Helsinki-NLP
+- Les modèles sont chargés à la demande et mis en cache
+- Supporte plusieurs paires de langues
+- Les codes de langue suivent le format ISO (ex: "en", "fr", "es")
