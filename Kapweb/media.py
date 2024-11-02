@@ -21,6 +21,7 @@ class MediaGenerator:
     def __init__(self, cache_dir=None):
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
         self.device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        self.torch_dtype = torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
         self.pipe = None
         self.current_model = None
         self.models_config = load_media_models(path.join(path.dirname(current_file), "..", "image_models.json"))
@@ -48,22 +49,28 @@ class MediaGenerator:
 
             print(f"Chargement du modèle: {model_config['name']}")
             
+            model_kwargs = model_config['config'].copy()
+            if self.device == "mps":
+                model_kwargs["torch_dtype"] = self.torch_dtype
+                if "variant" in model_kwargs:
+                    del model_kwargs["variant"]  # Supprimer variant pour MPS
+            
             if model_config['type'] == 'text2image':
                 self.pipe = AutoPipelineForText2Image.from_pretrained(
                     model_config['model_id'],
                     cache_dir=path.join(self.cache_dir, "DiffusersCache"),
-                    **model_config['config']
+                    **model_kwargs
                 )
             elif model_config['type'] == 'image2image':
                 self.pipe = AutoPipelineForImage2Image.from_pretrained(
                     model_config['model_id'],
                     cache_dir=path.join(self.cache_dir, "DiffusersCache"),
-                    **model_config['config']
+                    **model_kwargs
                 )
                 
             self.pipe.to(self.device)
             self.current_model = model_type
-            print(f"Modèle {model_type} chargé avec succès")
+            print(f"Modèle {model_type} chargé avec succès sur {self.device}")
             
         except Exception as e:
             print(f"Erreur lors du chargement du modèle: {str(e)}")
@@ -77,8 +84,8 @@ class MediaGenerator:
 
             # Génération avec progression
             for step in range(steps):
-                progress = (step + 1) / steps
-                yield f"data: {{'progress': {progress:.2f}}}\n\n"
+                progress = ((step + 1) / steps) * 100
+                yield f'data: {{"progress": {progress:.2f}}}\n\n'
                 await asyncio.sleep(0.1)
 
             # Génération de l'image
@@ -96,10 +103,10 @@ class MediaGenerator:
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            yield f"data: {{'status': 'completed', 'image': '{img_str}'}}\n\n"
+            yield f'data: {{"status": "completed" , "image": "{img_str}"}}\n\n'
 
         except Exception as e:
-            yield f"data: {{'error': 'Erreur lors de la génération : {str(e)}'}}\n\n"
+            yield f'data: {{"error": "Erreur lors de la génération : {str(e)}"}}\n\n'
 
     async def refine_image_data(self, image, prompt, negative_prompt="", strength=0.3, steps=20):
         """Raffine une image fournie en données avec le refiner"""
@@ -109,8 +116,8 @@ class MediaGenerator:
             
             # Progression du raffinement
             for step in range(steps):
-                progress = (step + 1) / steps
-                yield f"data: {{'progress': {progress:.2f}}}\n\n"
+                progress = ((step + 1) / steps) * 100
+                yield f'data: {{"progress": {progress:.2f}}}\n\n'
                 await asyncio.sleep(0.1)
 
             # Raffinement de l'image
@@ -128,10 +135,10 @@ class MediaGenerator:
             refined_image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            yield f"data: {{'status': 'completed', 'image': '{img_str}'}}\n\n"
+            yield f'data: {{"status": "completed" , "image": "{img_str}"}}\n\n'
 
         except Exception as e:
-            yield f"data: {{'error': 'Erreur lors du raffinement : {str(e)}'}}\n\n"
+            yield f'data: {{"error": "Erreur lors du raffinement : {str(e)}"}}\n\n'
 
     def get_available_models(self):
         """Retourne la liste des modèles disponibles avec leurs détails"""

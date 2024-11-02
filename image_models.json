@@ -41,6 +41,16 @@
                 "variant": "fp16",
                 "requires_safety_checker": false
             }
+        },
+        "v3.5": {
+            "name": "Stable Diffusion 3.5",
+            "model_id": "adamo1139/stable-diffusion-3.5-large-ungated",
+            "type": "text2image",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
         }
     }
 } 

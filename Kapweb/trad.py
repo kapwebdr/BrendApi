@@ -41,6 +41,7 @@ class Translator:
             translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
             
             return {
+                "status": "completed",
                 "translated_text": translation,
                 "from": from_lang,
                 "to": to_lang,

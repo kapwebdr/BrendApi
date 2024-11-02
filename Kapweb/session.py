@@ -7,17 +7,15 @@ from datetime import datetime
 class UserSession(BaseModel):
     session_id: str
     current_model: Optional[str] = None
-    llm_instance: Optional[RunnableWithMessageHistory] = None
-    loaded_model_config: Optional[dict] = None
     llm: Optional[LlamaCpp] = None
+    loaded_model_config: Optional[dict] = None
 
     def cleanup(self):
-        if self.llm_instance:
+        if self.llm:
             try:
-                self.llm_instance.stop()
+                self.llm.stop()
             except:
                 pass
-            self.llm_instance = None
             self.llm = None
 
     class Config:

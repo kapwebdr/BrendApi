@@ -1,9 +1,10 @@
-llama-cpp-python>=0.2.11
+llama-cpp-python
 langchain
 langchain_community
 fastapi
 aiohttp
-uvicorn
+uvicorn[standard]
+websockets
 pillow
 diffusers
 transformers
@@ -12,3 +13,10 @@ python-slugify
 pytesseract
 accelerate
 sentencepiece
+nomkl
+psutil
+gputil
+sacremoses
+coqui-tts
+faster-whisper
+melo-tts

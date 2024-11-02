@@ -269,3 +269,310 @@ Notes sur la Traduction :
 - Les modèles sont chargés à la demande et mis en cache
 - Supporte plusieurs paires de langues
 - Les codes de langue suivent le format ISO (ex: "en", "fr", "es")
+
+8. Monitoring Système
+-------------------
+Endpoint : WebSocket /ws/system-metrics
+Description : Fournit en temps réel les métriques système (CPU, mémoire, GPU)
+
+Format des données :
+{
+    "cpu": {
+        "percent": float,          // Pourcentage d'utilisation CPU
+        "frequency_current": float, // Fréquence actuelle en MHz
+        "frequency_max": float,     // Fréquence maximale en MHz
+        "cores": int               // Nombre de cœurs
+    },
+    "memory": {
+        "total": float,      // Mémoire totale en GB
+        "available": float,  // Mémoire disponible en GB
+        "percent": float,    // Pourcentage d'utilisation
+        "used": float       // Mémoire utilisée en GB
+    },
+    "gpu": [                // Liste des GPUs (vide si pas de GPU)
+        {
+            "id": int,           // ID du GPU
+            "name": string,      // Nom du GPU
+            "load": float,       // Charge en pourcentage
+            "memory_used": float, // Mémoire utilisée en MB
+            "memory_total": float, // Mémoire totale en MB
+            "temperature": float  // Température en °C
+        }
+    ]
+}
+
+Notes sur le Monitoring :
+- Les données sont mises à jour toutes les secondes
+- La connexion WebSocket reste active jusqu'à ce que le client se déconnecte
+- Les métriques GPU ne sont disponibles que si un GPU compatible est détecté
+- Utilise psutil pour les métriques CPU/RAM et GPUtil pour les métriques GPU
+
+Interface Web :
+- Une interface de visualisation est disponible dans /templates/system_monitor.html
+- Affiche des graphiques en temps réel pour CPU, mémoire et GPU
+- Utilise Plotly.js pour la visualisation
+- Les graphiques se mettent à jour automatiquement
+
+Exemple d'utilisation WebSocket (JavaScript) :
+
+9. Endpoint AI Unifié
+-------------------
+Endpoint : POST /v1/ai/process
+Description : Interface unifiée pour tous les outils d'IA
+Content-Type : application/json
+
+Corps de la requête :
+{
+    "tool": string,    // Type d'outil à utiliser
+    "config": object   // Configuration spécifique à l'outil
+}
+
+Types d'outils disponibles (tool) :
+- "llm" : Modèle de langage
+- "image_generation" : Génération d'images
+- "image_refinement" : Raffinement d'images
+- "image_analysis" : Analyse d'images
+- "ocr" : Reconnaissance de texte
+- "translation" : Traduction
+
+Configurations spécifiques par outil :
+
+A. LLM (tool: "llm")
+{
+    "model": string,        // Nom du modèle à utiliser
+    "messages": [           // Historique des messages
+        {
+            "role": string, // "system", "user", "assistant"
+            "content": string
+        }
+    ],
+    "stream": boolean,      // Mode streaming (optionnel)
+    "system": string       // Message système (optionnel)
+}
+
+B. Génération d'Image (tool: "image_generation")
+{
+    "model_type": string,      // Type de modèle (défaut: "sdxl/turbo")
+    "prompt": string,          // Description de l'image
+    "negative_prompt": string, // Prompt négatif (optionnel)
+    "width": integer,         // Largeur (optionnel, défaut: 1024)
+    "height": integer,        // Hauteur (optionnel, défaut: 1024)
+    "steps": integer          // Étapes (optionnel, défaut: 20)
+}
+
+C. Raffinement d'Image (tool: "image_refinement")
+{
+    "image": string,          // Image source en base64
+    "prompt": string,         // Description pour le raffinement
+    "negative_prompt": string, // Prompt négatif (optionnel)
+    "strength": float,        // Force du raffinement (optionnel, défaut: 0.3)
+    "steps": integer          // Étapes (optionnel, défaut: 20)
+}
+
+D. Analyse d'Image (tool: "image_analysis")
+{
+    "image": string,     // Image en base64
+    "labels": [string]   // Liste des labels à vérifier
+}
+
+E. OCR (tool: "ocr")
+{
+    "image": string      // Image en base64
+}
+
+F. Traduction (tool: "translation")
+{
+    "text": string,      // Texte à traduire
+    "from_lang": string, // Langue source
+    "to_lang": string    // Langue cible
+}
+
+Codes d'erreur :
+- 400 : Configuration invalide ou manquante
+- 404 : Ressource non trouvée (ex: modèle)
+- 500 : Erreur interne du serveur
+
+Notes :
+- L'endpoint gère automatiquement la validation des configurations
+- Le header X-Session-ID est géré comme pour les autres endpoints
+- Les réponses conservent le même format que les endpoints spécifiques
+- Le streaming est supporté pour les outils compatibles (LLM, génération d'images)
+
+Exemple d'utilisation :
+
+10. Outils Audio
+--------------
+Les outils audio sont accessibles via l'endpoint unifié /v1/ai/process avec les tools suivants :
+
+A. Text-to-Speech (tool: "text_to_speech")
+----------------------------------------
+Configuration :
+{
+    "text": string,          // Texte à convertir en audio
+    "voice_path": string,    // Chemin vers le fichier voix (optionnel)
+    "language": string       // Code langue (optionnel, défaut: "fr")
+}
+
+Retour : Stream d'événements SSE
+- {"progress": float}                    // Progression (0-100)
+- {"status": "completed",                // Audio généré
+   "audio": "base64_string",            // Audio en base64
+   "sample_rate": int}                  // Taux d'échantillonnage
+- {"error": "message d'erreur"}         // En cas d'erreur
+
+B. Speech-to-Text (tool: "speech_to_text")
+----------------------------------------
+Configuration :
+{
+    "audio": string         // Audio en base64
+}
+
+Retour :
+{
+    "text": string,         // Texte transcrit
+    "language": string,     // Langue détectée
+    "segments": [           // Segments de transcription
+        {
+            "text": string,
+            "start": float, // Temps de début en secondes
+            "end": float    // Temps de fin en secondes
+        }
+    ]
+}
+
+C. Liste des Modèles Audio (tool: "list_speech_models")
+---------------------------------------------------
+Configuration : {}  // Aucune configuration requise
+
+Retour :
+{
+    "models": {
+        "tts": {
+            "xtts_v2": {
+                "name": "XTTS v2",
+                "languages": ["fr", "en", "es", ...]
+            }
+        },
+        "stt": {
+            "whisper": {
+                "name": "Faster Whisper",
+                "sizes": ["tiny", "base", "small", "medium", "large-v3"]
+            }
+        }
+    }
+}
+
+Notes sur les Outils Audio :
+- Les modèles sont chargés automatiquement à la demande
+- Le streaming est supporté pour la synthèse vocale (TTS)
+- Les fichiers audio ne sont pas sauvegardés sur le disque
+- Support des formats audio courants (WAV)
+- Détection automatique du matériel (CPU/GPU/MPS)
+
+11. Outils HTTP et Extraction Web
+------------------------------
+Les outils HTTP sont accessibles via l'endpoint unifié /v1/ai/process avec les tools suivants :
+
+A. Analyse d'URL (tool: "url_analyze")
+-----------------------------------
+Configuration :
+{
+    "url": string           // URL à analyser
+}
+
+Retour :
+{
+    "url": string,          // URL analysée
+    "domain": string,       // Domaine
+    "path": string,         // Chemin
+    "content_type": string, // Type de contenu
+    "size": integer,        // Taille en octets
+    "headers": object,      // Headers HTTP
+    "status": integer       // Code status HTTP
+}
+
+B. Extraction de Contenu (tool: "url_extract")
+------------------------------------------
+Configuration :
+{
+    "url": string,           // URL source
+    "selectors": [string]    // Liste des sélecteurs CSS (optionnel)
+}
+
+Retour : Stream d'événements SSE
+- {"selector": "css_selector", "content": "contenu extrait"}  // Pour chaque sélecteur
+- {"content": "texte complet"}                                // Sans sélecteur
+- {"error": "message d'erreur"}                              // En cas d'erreur
+
+C. Streaming de Contenu (tool: "url_stream")
+----------------------------------------
+Configuration :
+{
+    "url": string          // URL du contenu à streamer
+}
+
+Retour : Stream d'événements SSE
+- {"progress": float,                    // Progression (0-100)
+   "chunk": "base64_data",              // Chunk de données encodé en base64
+   "content_type": "type_mime"}         // Type de contenu
+- {"status": "completed"}               // Streaming terminé
+- {"error": "message d'erreur"}         // En cas d'erreur
+
+D. Streaming YouTube (tool: "youtube_stream")
+-----------------------------------------
+Configuration :
+{
+    "video_id": string      // ID de la vidéo YouTube
+}
+
+Retour : Stream d'événements SSE
+- {"title": string,                      // Titre de la vidéo
+   "author": string,                     // Auteur
+   "length": integer}                    // Durée en secondes
+- {"progress": float,                    // Progression (0-100)
+   "chunk": "base64_data",              // Chunk vidéo encodé en base64
+   "content_type": "video/mp4"}         // Type de contenu
+- {"status": "completed"}               // Streaming terminé
+- {"error": "message d'erreur"}         // En cas d'erreur
+
+Notes sur les Outils HTTP :
+- Tous les contenus sont streamés en chunks et encodés en base64
+- Aucune sauvegarde locale des fichiers
+- Support de multiples types de contenu (HTML, JSON, vidéo, etc.)
+- Extraction sélective de contenu HTML via sélecteurs CSS
+- Progression en temps réel pour tous les streams
+- Gestion automatique des erreurs et timeouts
+
+Exemple d'utilisation de streaming :
+
+E. Métriques Système (tool: "system_metrics")
+-----------------------------------------
+Configuration : {}  // Aucune configuration requise
+
+Retour :
+{
+    "cpu": {
+        "percent": float,          // Pourcentage d'utilisation CPU
+        "frequency_current": float, // Fréquence actuelle en MHz
+        "frequency_max": float,     // Fréquence maximale en MHz
+        "cores": int               // Nombre de cœurs
+    },
+    "memory": {
+        "total": float,      // Mémoire totale en GB
+        "available": float,  // Mémoire disponible en GB
+        "percent": float,    // Pourcentage d'utilisation
+        "used": float       // Mémoire utilisée en GB
+    },
+    "gpu": [                // Liste des GPUs (vide si pas de GPU)
+        {
+            "id": int,           // ID du GPU
+            "name": string,      // Nom du GPU
+            "load": float,       // Charge en pourcentage
+            "memory_used": float, // Mémoire utilisée en MB
+            "memory_total": float, // Mémoire totale en MB
+            "temperature": float  // Température en °C
+        }
+    ]
+}
+
+Exemple d'utilisation :
