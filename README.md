@@ -1,34 +1,47 @@
-# Brenda
+# Brenda AI API
 
-Brenda est un projet polyvalent qui semble combiner plusieurs technologies et fonctionnalités. Voici un aperçu des composants principaux du projet.
+Brenda AI API est une interface de programmation unifiée qui combine plusieurs outils d'intelligence artificielle, de traitement multimédia et d'analyse système.
 
-## Structure du projet
+## 🎯 À propos
 
-Le projet Brenda comprend les éléments suivants :
+Développé par Damien RICHARD ([Kapweb](http://www.kapweb.com)), ce projet vise à fournir une API REST unifiée pour accéder à différents services d'IA et de traitement de données.
 
-- Docker pour la conteneurisation
-- MongoDB pour le stockage de données
-- Python comme langage de programmation principal
-- Utilisation de modèles de traitement du langage naturel (NLP)
-- Possibilité de génération de voix avec Bark
+## 🌟 Fonctionnalités
 
-## Prérequis
+- **LLM (Large Language Models)**
+  - Support de multiples modèles (Vigogne, CodeLlama, etc.)
+  - Streaming des réponses
+  - Gestion de session
+  - Système de prompt personnalisable
 
-- Docker et Docker Compose
-- Python 3.11
+- **Traitement d'Images**
+  - Génération d'images avec SDXL
+  - Raffinement d'images existantes
+  - Analyse d'images avec CLIP
+  - OCR (Reconnaissance de texte)
 
-## Installation
+- **Audio**
+  - Synthèse vocale (TTS) avec XTTS-v2 et MeloTTS
+  - Reconnaissance vocale avec Faster-Whisper
+  - Support multilingue
 
-1. Clonez le dépôt :   ```
-   git clone [URL_DU_REPO]
-   cd brenda   ```
+- **HTTP et Média**
+  - Streaming de contenu web
+  - Extraction de contenu HTML
+  - Streaming YouTube
+  - Analyse d'URL
 
-2. Installez les dépendances Python :   ```
-   pip install -r requirements.txt   ```
+- **Système**
+  - Monitoring CPU/RAM/GPU
+  - Gestion des ressources
+  - Métriques en temps réel
 
-3. Lancez les services Docker :   ```
-   docker-compose up -d   ```
+## 🚀 Installation
 
-## Utilisation
+### Prérequis
 
-Pour lancer le projet, utilisez le script `Brenda.sh` :
+- Python 3.11+
+- CUDA compatible GPU (optionnel)
+- Apple Silicon (MPS) ou NVIDIA GPU recommandé
+
+### Installation des dépendances
