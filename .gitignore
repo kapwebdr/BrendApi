@@ -11,3 +11,4 @@ KaSpaCy/*
 __pycache__/
 *.npz
 # static/*
+*.wav

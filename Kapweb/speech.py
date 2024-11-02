@@ -43,7 +43,7 @@ class SpeechProcessor:
                 return
 
             print(f"\nChargement du modèle STT: {model_size}")
-            compute_type = "float32" if self.device == "mps" else "float16"
+            compute_type = "float32"# if self.device == "mps" else "float16"
             self.stt_model = WhisperModel(
                 model_size,
                 device=self.device,
@@ -136,6 +136,48 @@ class SpeechProcessor:
         except Exception as e:
             return {"error": f"Erreur lors de la transcription : {str(e)}"}
 
+    async def speech_to_text_streaming(self, audio_data):
+        """Convertit l'audio en texte avec streaming des résultats"""
+        try:
+            if not self.stt_model:
+                raise ValueError("Le modèle STT n'est pas chargé")
+
+            # Préparer l'audio
+            audio_buffer = io.BytesIO(audio_data)
+            audio_array, sample_rate = sf.read(audio_buffer)
+            
+            temp_buffer = io.BytesIO()
+            sf.write(temp_buffer, audio_array, sample_rate, format='WAV')
+            temp_buffer.seek(0)
+            # Initialiser la transcription avec streaming
+            segments_iterator, info = self.stt_model.transcribe(
+                temp_buffer,
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500)
+            )
+            print('streaming')
+            print("Detected language '%s' with probability %f" % (info.language, info.language_probability))
+
+            current_text = ""
+            
+            for segment in segments_iterator:
+                print(segment.text)
+                # Mettre à jour le texte cumulatif
+                current_text += segment.text
+
+                # Envoyer le segment actuel et le texte complet
+                yield f'data: {{"status": "transcribing", "segment": {{"text": "{segment.text}","start": "{segment.start}", "end": "{segment.end}" }}}}\n\n'
+                
+                # Petit délai pour éviter de surcharger le stream
+                await asyncio.sleep(0.1)
+
+            # Envoyer le résultat final
+            yield f'data: {{"status": "completed", "text": "{current_text}"}}\n\n'
+
+        except Exception as e:
+            yield f'data: {{"error": "Erreur lors de la transcription : {str(e)}"}}\n\n'
+
     def get_available_models(self):
         """Retourne la liste des modèles disponibles"""
         return {
@@ -148,6 +190,10 @@ class SpeechProcessor:
                             {
                                 "path": "morgan.wav",
                                 "label":"Morgan Freeman"
+                            },
+                             {
+                                "path": "elise.wav",
+                                "label":"Elise"
                             }
                         ]
                 }

@@ -112,7 +112,6 @@ async def process_ai_request(
     session: UserSession = Depends(get_session)
 ):
     print(f"\n=== Nouvelle requête AI: {request.tool} ===")
-    print(f"Configuration: {request.config}")
 
     try:
         if request.tool == AITool.LIST_MODELS:
@@ -130,11 +129,10 @@ async def process_ai_request(
             model_name = request.config["model_name"]
             if model_name not in available_models:
                 raise HTTPException(status_code=404, detail="Modèle non trouvé")
-
+        
             async def stream_response():
                 async for chunk in download_model(available_models[model_name]):
                     yield chunk
-                
                 llm = loadLlm(available_models[model_name])
                 if llm:
                     session.llm = llm
@@ -396,13 +394,22 @@ async def process_ai_request(
                     else request.config["audio"]
                 )
                 
-                await speech_processor.init_stt()
-                result = await speech_processor.speech_to_text(audio_data)
+                await speech_processor.init_stt(request.config.get("model_size", "large-v3"))
                 
-                return JSONResponse(
-                    content=result,
-                    headers={"X-Session-ID": session.session_id}
-                )
+                # Utiliser la version streaming si demandée
+                if request.config.get("stream", False):
+                    return StreamingResponse(
+                        speech_processor.speech_to_text_streaming(audio_data),
+                        media_type="text/event-stream",
+                        headers={"X-Session-ID": session.session_id}
+                    )
+                else:
+                    result = await speech_processor.speech_to_text(audio_data)
+                    return JSONResponse(
+                        content=result,
+                        headers={"X-Session-ID": session.session_id}
+                    )
+                
             except Exception as e:
                 raise HTTPException(
                     status_code=500,
