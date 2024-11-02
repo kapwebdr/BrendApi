@@ -53,22 +53,36 @@ async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession
     return session
 
 class AITool(str, Enum):
+    # LLM
     LLM = "llm"
-    IMAGE_GENERATION = "image_generation"
-    IMAGE_REFINEMENT = "image_refinement"
-    IMAGE_ANALYSIS = "image_analysis"
-    OCR = "ocr"
-    TRANSLATION = "translation"
     LIST_MODELS = "list_models"
     LOAD_MODEL = "load_model"
     SESSION_STATUS = "session_status"
     STOP_GENERATION = "stop_generation"
+    
+    # Image
+    IMAGE_GENERATION = "image_generation"
+    IMAGE_REFINEMENT = "image_refinement"
+    IMAGE_ANALYSIS = "image_analysis"
+    OCR = "ocr"
     LIST_IMAGE_MODELS = "list_image_models"
+    
+    # Traduction
+    TRANSLATION = "translation"
     LIST_LANGUAGES = "list_languages"
+    
+    # HTTP et Media
     URL_ANALYZE = "url_analyze"
     URL_EXTRACT = "url_extract"
     URL_STREAM = "url_stream"
     YOUTUBE_STREAM = "youtube_stream"
+    
+    # Audio
+    TEXT_TO_SPEECH = "text_to_speech"
+    SPEECH_TO_TEXT = "speech_to_text"
+    LIST_SPEECH_MODELS = "list_speech_models"
+    
+    # Système
     SYSTEM_METRICS = "system_metrics"
 
 class AIRequest(BaseModel):
