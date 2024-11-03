@@ -1,12 +1,56 @@
 {
-    "sdxl/turbo": {
-        "name": "SDXL Turbo",
-        "type": "text-to-image",
-        "description": "Modèle rapide pour la génération d'images"
+    "sdxl": {
+        "base": {
+            "name": "SDXL Base",
+            "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+            "type": "text2image",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
+        },
+        "turbo": {
+            "name": "SDXL Turbo",
+            "model_id": "stabilityai/sdxl-turbo",
+            "type": "text2image",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
+        },
+        "refiner": {
+            "name": "SDXL Refiner",
+            "model_id": "stabilityai/stable-diffusion-xl-refiner-1.0",
+            "type": "refiner",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
+        }
     },
-    "sdxl/refiner": {
-        "name": "SDXL Refiner",
-        "type": "image-to-image",
-        "description": "Modèle pour l'amélioration d'images existantes"
+    "sd": {
+        "v1.5": {
+            "name": "Stable Diffusion 1.5",
+            "model_id": "runwayml/stable-diffusion-v1-5",
+            "type": "text2image",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
+        },
+        "v3.5": {
+            "name": "Stable Diffusion 3.5",
+            "model_id": "adamo1139/stable-diffusion-3.5-large-ungated",
+            "type": "text2image",
+            "config": {
+                "torch_dtype": "float16",
+                "variant": "fp16",
+                "requires_safety_checker": false
+            }
+        }
     }
 } 

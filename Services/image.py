@@ -26,13 +26,22 @@ app.add_middleware(
 )
 
 service = ServiceHelper("image")
+session_manager = SessionManager()
+
+async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession:
+    if not x_session_id:
+        x_session_id = str(uuid.uuid4())
+        session = session_manager.create_session(x_session_id)
+    else:
+        session = session_manager.get_session(x_session_id)
+        if not session:
+            session = session_manager.create_session(x_session_id)
+    return session
 
 @app.post("/v1/ai/image/models")
 async def list_models():
     try:
-        with open("/app/image_models.json", 'r') as file:
-            models = json.load(file)
-        return JSONResponse(content={"models": models})
+        return JSONResponse(content={"models": media_generator.get_available_models()})
     except Exception as e:
         raise HTTPException(
             status_code=500,
