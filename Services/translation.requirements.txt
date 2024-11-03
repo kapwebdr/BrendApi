@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+transformers
+sentencepiece
+sacremoses
+diffusers
+redis 
+torch

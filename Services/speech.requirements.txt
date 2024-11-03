@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+coqui-tts
+faster-whisper
+redis 
+torch
+soundfile

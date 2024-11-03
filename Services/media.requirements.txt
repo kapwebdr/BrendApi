@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pillow
+diffusers
+transformers
+torch
+accelerate
+redis 
+python-slugify
+pytesseract

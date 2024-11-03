@@ -61,12 +61,15 @@ async def download_model(model):
                 with open(temp_path, mode) as file:
                     download_size = start_byte
                     chunk_count = 0
+                    progress = 0
                     async for chunk in response.content.iter_chunked(8192):
                         file.write(chunk)
                         download_size += len(chunk)
                         chunk_count += 1
-                        progress =(download_size/remote_size*100)
-                        yield f'data: {{"progress": {progress:.2f}}}\n\n'
+                        new_progress = (download_size/remote_size*100)
+                        if new_progress - progress >= 1:
+                            progress = new_progress
+                            yield f'data: {{"progress": {progress:.2f}}}\n\n'
                 
                 if download_size != remote_size:
                     raise Exception(f"Téléchargement incomplet: {download_size}/{remote_size} octets")

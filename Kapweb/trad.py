@@ -1,6 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from os import path
-import json
 import torch
 
 current_file = path.realpath(__file__)

@@ -3,6 +3,15 @@ from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHan
 from os import path
 import json
 from Kapweb.session import UserSession
+import redis
+import os
+
+# Configuration Redis
+redis_client = redis.Redis(
+    host=os.getenv('REDIS_HOST', 'localhost'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    decode_responses=True
+)
 
 current_file = path.realpath(__file__)
 
@@ -11,7 +20,7 @@ def load_models(file_path):
         data = json.load(file)
         return data
 
-brenda_llm_config = {"max_new_tokens":2048,"context_length":2048,"temperature":0.7,"stream":True}
+brenda_llm_config = {"max_new_tokens":2048,"context_length":2048,"temperature":0.5,"stream":True}
 brenda_system = "Tu es Brenda, mon assistante, secrétaire personnelle."
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
@@ -28,12 +37,11 @@ def format_prompt(messages, system_message, prompt_template=None):
     
     # Assemblage du prompt final
     final_prompt = f"{system_message}\n\n"
-    
     # if history:
     #     final_prompt += "Contexte précédent:\n" + "\n".join(history) + "\n\n'
     
-    final_prompt += f"{current_prompt}"
-    
+    # final_prompt += f"{current_prompt}"
+    print(final_prompt)
     return final_prompt
 
 def loadLlm(model):
@@ -54,29 +62,28 @@ def loadLlm(model):
         callback_manager=callback_manager,
         streaming=True,
         verbose=True,
-        n_threads=6,      # Limiter le nombre de threads
-        use_mlock=True,   # Améliorer la gestion mémoire
-        use_mmap=True,    # Utiliser mmap pour le chargement
-        seed=42           # Fixer une seed pour la reproductibilité
+        # n_threads=6,      # Limiter le nombre de threads
+        # use_mlock=True,   # Améliorer la gestion mémoire
+        # use_mmap=True,    # Utiliser mmap pour le chargement
+        # seed=42           # Fixer une seed pour la reproductibilité
     )
     
     return llm
 
 async def generate_stream(prompt, session: UserSession, model_name=None, models=None):
     try:
-        # Vérifier si le modèle doit être chargé
-        if (not session.llm or session.current_model != model_name) and model_name in models:
-            llm = loadLlm(models[model_name])
-            if not llm:
-                yield f'data: {{"error": "Échec du chargement du modèle"}}\n\n'
-                return
-            
-            session.llm = llm
-            session.current_model = model_name
-            session.loaded_model_config = models[model_name]
-
-        for chunk in session.llm.stream(prompt):
+        # Stockage de l'état de la session dans Redis
+        session_key = f"session:{session.id}"
+        redis_client.hset(session_key, mapping={
+            "current_model": model_name,
+            "last_prompt": prompt
+        })
+        
+        llm = loadLlm(models[model_name])
+        print(prompt)
+        for chunk in llm.stream(prompt):
             if chunk:
+                print(chunk)
                 yield f'data: {chunk}\n\n'
         
         yield 'data: [DONE]\n\n'

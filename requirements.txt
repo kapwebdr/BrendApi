@@ -1,10 +1,8 @@
-llama-cpp-python
 langchain
 langchain_community
 fastapi
 aiohttp
 uvicorn[standard]
-websockets
 pillow
 diffusers
 transformers

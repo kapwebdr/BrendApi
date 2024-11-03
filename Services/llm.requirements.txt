@@ -1,0 +1,7 @@
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+llama-cpp-python
+fastapi
+uvicorn
+langchain_community
+langchain_core
+redis

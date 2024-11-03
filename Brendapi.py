@@ -1,19 +1,20 @@
-from fastapi import FastAPI, Request, HTTPException, Depends, Header, BackgroundTasks, WebSocket
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import asyncio
+from langchain_community.llms import LlamaCpp
+from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
 import os
 from typing import List, Optional, Any, Dict
 import uuid
-from starlette.requests import Request
-from starlette.responses import Response
+# from starlette.requests import Request
+# from starlette.responses import Response
 from Kapweb.llm import (
     load_models, 
-    loadLlm, 
+    # loadLlm, 
     format_prompt, 
     brenda_system,
-    generate_stream
+    # generate_stream
 )
 from Kapweb.session import SessionManager, UserSession
 from Kapweb.huggingface import download_model
@@ -89,26 +90,59 @@ class AIRequest(BaseModel):
     tool: AITool
     config: Dict[str, Any]
 
-@app.middleware("http")
-async def catch_disconnections(request: Request, call_next):
-    try:
-        return await call_next(request)
-    except Exception as e:
-        if "Broken pipe" in str(e) or "Connection reset by peer" in str(e):
-            session_id = request.headers.get("X-Session-ID")
-            if session_id:
-                session = session_manager.get_session(session_id)
-                if session and session.llm:
-                    try:
-                        session.llm.stop()
-                    except:
-                        pass
-        raise e
+# @app.middleware("http")
+# async def catch_disconnections(request: Request, call_next):
+#     try:
+#         return await call_next(request)
+#     except Exception as e:
+#         if "Broken pipe" in str(e) or "Connection reset by peer" in str(e):
+#             session_id = request.headers.get("X-Session-ID")
+#             if session_id:
+#                 session = session_manager.get_session(session_id)
+#                 if session and session.llm:
+#                     try:
+#                         session.llm.stop()
+#                     except:
+#                         pass
+#         raise e
+brenda_llm_config = {"max_new_tokens":2048,"context_length":2048,"temperature":0.5,"stream":True}
+brenda_system = "Tu es Brenda, mon assistante, secrétaire personnelle."
+callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+
+
+def loadLlm(model_name):
+    model_path = os.path.join(os.path.dirname(current_file), "Cache", "LlamaCppModel", "bartowski",
+                           "Llama-3.2-3B-Instruct-GGUF","Llama-3.2-3B-Instruct-Q4_0.gguf")
+    print(model_path)
+    if not os.path.exists(model_path):
+        return None
+
+    n_gpu_layers = 1
+    n_batch = 4096
+    llm = LlamaCpp(
+        model_path=model_path,
+        n_gpu_layers=n_gpu_layers,
+        n_batch=n_batch,
+        n_ctx=n_batch,
+        f16_kv=True,
+        config=brenda_llm_config,
+        callback_manager=callback_manager,
+        streaming=True,
+        verbose=True,
+    )
+    
+    return llm
+
+async def generate_stream(prompt, session: UserSession, model_name, available_models):
+    llm = loadLlm(model_name)
+    for chunk in llm.stream("Bonjour"):
+        if chunk:
+            print(chunk)
+            yield f'data: {chunk}\n\n'
 
 @app.post("/v1/ai/process")
 async def process_ai_request(
     request: AIRequest,
-    background_tasks: BackgroundTasks,
     session: UserSession = Depends(get_session)
 ):
     print(f"\n=== Nouvelle requête AI: {request.tool} ===")
@@ -449,7 +483,7 @@ if __name__ == "__main__":
         uvicorn.run(
             "Brendapi:app",
             host="0.0.0.0",
-            port=8000,
+            port=8002,
             reload=True,
             reload_dirs=[".", "Kapweb"],
             reload_delay=2

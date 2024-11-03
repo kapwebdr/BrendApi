@@ -1,13 +1,10 @@
 from typing import Optional, Dict
 from pydantic import BaseModel
-from langchain_community.llms import LlamaCpp
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from datetime import datetime
 
 class UserSession(BaseModel):
     session_id: str
     current_model: Optional[str] = None
-    llm: Optional[LlamaCpp] = None
+    llm: Optional[any] = None
     loaded_model_config: Optional[dict] = None
 
     def cleanup(self):
