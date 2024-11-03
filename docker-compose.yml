@@ -8,8 +8,8 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./models.json:/app/models.json
-      - ./Services/llm.py:/app/server.py
+      - ./models.json:/app/serve/models.json
+      - ./Services/llm.py:/app/serve/server.py
       - ./Services/llm.requirements.txt:/app/requirements.txt
     ports:
       - "10000:8000"
@@ -23,9 +23,9 @@ services:
         rm -rf /var/lib/apt/lists/* &&
         pip install --no-cache-dir -r /app/requirements.txt &&
         if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-          uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+          uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
         else
-          uvicorn server:app --host 0.0.0.0 --port 8000;
+          uvicorn serve.server:app --host 0.0.0.0 --port 8000;
         fi
         "
 
@@ -36,8 +36,8 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./image_models.json:/app/image_models.json
-      - ./Services/image.py:/app/server.py
+      - ./image_models.json:/app/serve/image_models.json
+      - ./Services/image.py:/app/serve/server.py
       - ./Services/image.requirements.txt:/app/requirements.txt
     ports:
       - "10001:8000"
@@ -52,9 +52,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -65,7 +65,7 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./Services/translation.py:/app/server.py
+      - ./Services/translation.py:/app/serve/server.py
       - ./Services/translation.requirements.txt:/app/requirements.txt
     ports:
       - "10002:8000"
@@ -79,9 +79,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -92,7 +92,7 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./Services/speech.py:/app/server.py
+      - ./Services/speech.py:/app/serve/server.py
       - ./Services/speech.requirements.txt:/app/requirements.txt
     ports:
       - "10003:8000"
@@ -109,9 +109,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -122,8 +122,8 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./image_models.json:/app/image_models.json
-      - ./Services/media.py:/app/server.py
+      - ./image_models.json:/app/serve/image_models.json
+      - ./Services/media.py:/app/serve/server.py
       - ./Services/media.requirements.txt:/app/requirements.txt
     ports:
       - "10004:8000"
@@ -137,9 +137,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -151,7 +151,7 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./Services/monitor.py:/app/server.py
+      - ./Services/monitor.py:/app/serve/server.py
       - ./Services/monitor.requirements.txt:/app/requirements.txt
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -166,9 +166,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -197,7 +197,7 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./Services/storage.py:/app/server.py
+      - ./Services/storage.py:/app/serve/server.py
       - ./Services/storage.requirements.txt:/app/requirements.txt
       - ./Storage/Chroma:/app/chroma_storage
     ports:
@@ -221,9 +221,9 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
 
@@ -242,7 +242,7 @@ services:
     volumes:
       - ./Cache:/app/Cache
       - ./Kapweb:/app/Kapweb
-      - ./Services/chaining.py:/app/server.py
+      - ./Services/chaining.py:/app/serve/server.py
       - ./Services/chaining.requirements.txt:/app/requirements.txt
     ports:
       - "10007:8000"
@@ -256,8 +256,8 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
-        uvicorn server:app --host 0.0.0.0 --port 8000;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi
       "
