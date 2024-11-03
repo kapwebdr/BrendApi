@@ -43,6 +43,7 @@ services:
       - "10001:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - PYTORCH_ENABLE_MPS_FALLBACK=1
       - KAPWEB_DEBUG=1
     entrypoint: >
       /bin/sh -c "

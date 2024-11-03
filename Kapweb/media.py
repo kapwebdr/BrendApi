@@ -20,8 +20,8 @@ def load_media_models(file_path):
 class MediaGenerator:
     def __init__(self, cache_dir=None):
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
-        self.device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-        self.torch_dtype = torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
+        self.device = "mps" #if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        self.torch_dtype = torch.float16  #torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
         self.pipe = None
         self.current_model = None
         self.models_config = load_media_models(path.join(path.dirname(current_file), "..", "image_models.json"))
