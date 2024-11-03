@@ -21,7 +21,7 @@ class MediaGenerator:
     def __init__(self, cache_dir=None, models_config_path=None):
         print(f"Initialisation de MediaGenerator avec models_config_path: {models_config_path} {cache_dir}")
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
-        self.device = "mps" #if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cpu" #if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
         self.torch_dtype = torch.float16  #torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
         self.pipe = None
         self.current_model = None
@@ -52,7 +52,7 @@ class MediaGenerator:
             print(f"Chargement du modèle: {model_config['name']}")
             
             model_kwargs = model_config['config'].copy()
-            if self.device == "mps":
+            if self.device == "cpu":
                 model_kwargs["torch_dtype"] = self.torch_dtype
                 if "variant" in model_kwargs:
                     del model_kwargs["variant"]  # Supprimer variant pour MPS
