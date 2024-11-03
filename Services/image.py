@@ -7,11 +7,8 @@ from typing import Optional
 import base64
 from PIL import Image
 import io
-import os
-import json
 import uuid
 import pytesseract
-import httpx
 from datetime import datetime
 from Kapweb.services import ServiceHelper
 app = FastAPI()

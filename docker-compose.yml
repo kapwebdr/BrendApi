@@ -109,7 +109,7 @@ services:
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
       if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
-        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb /app/serve;
+        uvicorn serve.server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/Kapweb --reload-dir /app/serve;
       else
         uvicorn serve.server:app --host 0.0.0.0 --port 8000;
       fi

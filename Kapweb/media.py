@@ -1,4 +1,3 @@
-from PIL import Image
 from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
@@ -28,8 +27,8 @@ class MediaGenerator:
         self.current_model = None
         self.models_config_path = models_config_path or path.join(path.dirname(current_file),"..")
         
-
     def get_model_config(self, model_type):
+        self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
         """Récupère la configuration d'un modèle à partir de son type"""
         parts = model_type.split('/')
         config = self.models_config
