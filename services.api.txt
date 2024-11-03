@@ -1,0 +1,370 @@
+API BRENDA - Documentation Complète des Services
+==============================================
+
+1. Service LLM (Large Language Models)
+-----------------------------------
+
+1.1 Liste des Modèles LLM
+------------------------
+Endpoint : GET /v1/ai/models
+Description : Récupère la liste des modèles LLM disponibles
+Retour : 
+{
+    "models": ["model1", "model2", ...]
+}
+
+1.2 Chargement d'un Modèle
+-------------------------
+Endpoint : POST /v1/ai/load_model
+Corps :
+{
+    "model_name": string
+}
+
+1.3 Génération de Texte
+----------------------
+Endpoint : POST /v1/ai/generate
+Corps :
+{
+    "model": string,
+    "messages": [
+        {
+            "role": string,
+            "content": string
+        }
+    ],
+    "stream": boolean
+}
+
+1.4 État de la Session
+--------------------
+Endpoint : GET /v1/ai/session
+Retour :
+{
+    "session_id": string,
+    "current_model": string,
+    "has_model_loaded": boolean
+}
+
+1.5 Arrêt de la Génération
+------------------------
+Endpoint : POST /v1/ai/stop
+
+2. Service Image
+--------------
+
+2.1 Liste des Modèles d'Image
+---------------------------
+Endpoint : GET /v1/ai/image/models
+Retour :
+{
+    "models": ["model1", "model2", ...]
+}
+
+2.2 Génération d'Image
+--------------------
+Endpoint : POST /v1/ai/image/generate
+Corps :
+{
+    "prompt": string,
+    "negative_prompt": string,
+    "width": integer,
+    "height": integer,
+    "steps": integer
+}
+
+2.3 Raffinement d'Image
+---------------------
+Endpoint : POST /v1/ai/image/refine
+Corps :
+{
+    "image": string,
+    "prompt": string,
+    "negative_prompt": string,
+    "strength": float,
+    "steps": integer
+}
+
+2.4 Analyse d'Image
+-----------------
+Endpoint : POST /v1/ai/image/analyze
+Corps :
+{
+    "image": string,
+    "labels": [string]
+}
+
+2.5 OCR (Reconnaissance de Texte)
+------------------------------
+Endpoint : POST /v1/ai/image/ocr
+Corps :
+{
+    "image": string,
+    "lang": string
+}
+
+3. Service de Traduction
+----------------------
+
+3.1 Liste des Langues
+-------------------
+Endpoint : GET /v1/ai/translation/languages
+Retour :
+{
+    "languages": ["fr", "en", ...]
+}
+
+3.2 Traduction
+------------
+Endpoint : POST /v1/ai/translation/translate
+Corps :
+{
+    "text": string,
+    "from_lang": string,
+    "to_lang": string
+}
+
+4. Service Audio
+--------------
+
+4.1 Liste des Modèles Audio
+-------------------------
+Endpoint : GET /v1/ai/speech/models
+Retour :
+{
+    "models": ["model1", "model2", ...]
+}
+
+4.2 Text-to-Speech
+----------------
+Endpoint : POST /v1/ai/speech/text-to-speech
+Corps :
+{
+    "text": string,
+    "voice_path": string,
+    "language": string
+}
+
+4.3 Speech-to-Text
+----------------
+Endpoint : POST /v1/ai/speech/speech-to-text
+Corps :
+{
+    "audio": string,
+    "model_size": string
+}
+
+5. Service Media
+--------------
+
+5.1 Analyse d'URL
+---------------
+Endpoint : POST /v1/ai/media/url/analyze
+Corps :
+{
+    "url": string
+}
+
+5.2 Extraction de Contenu
+----------------------
+Endpoint : POST /v1/ai/media/url/extract
+Corps :
+{
+    "url": string
+}
+
+5.3 Streaming d'URL
+-----------------
+Endpoint : POST /v1/ai/media/url/stream
+Corps :
+{
+    "url": string
+}
+
+6. Service de Monitoring
+----------------------
+
+6.1 Statistiques Système
+----------------------
+Endpoint : GET /v1/monitor/system/stats
+Retour :
+{
+    "cpu_percent": float,
+    "memory": {
+        "total": int,
+        "available": int,
+        "percent": float
+    },
+    "disk": {
+        "total": int,
+        "used": int,
+        "free": int,
+        "percent": float
+    }
+}
+
+6.2 Liste des Conteneurs
+----------------------
+Endpoint : GET /v1/monitor/containers
+Retour : Array de conteneurs Brenda
+[
+    {
+        "id": string,
+        "name": string,
+        "status": string,
+        "image": string,
+        "created": string,
+        "ports": object,
+        "stats": {
+            "cpu_percent": float,
+            "memory_percent": float,
+            "memory_usage": int,
+            "memory_limit": int
+        }
+    }
+]
+
+6.3 Gestion des Conteneurs
+------------------------
+- POST /v1/monitor/containers/{container_id}/start
+- POST /v1/monitor/containers/{container_id}/stop
+- POST /v1/monitor/containers/{container_id}/restart
+- GET /v1/monitor/containers/{container_id}/logs
+- GET /v1/monitor/containers/{container_id}/stats
+
+7. Service de Chaînage (Chaining)
+------------------------------
+
+7.1 Chat Multimodal
+-----------------
+Endpoint : POST /v1/ai/chaining/chat
+Description : Permet une conversation avec entrée texte ou audio et retourne texte + audio
+Corps :
+{
+    "text": string,      // Texte d'entrée (optionnel)
+    "audio": string      // Audio en base64 (optionnel)
+}
+
+Note: Au moins un des deux champs (text ou audio) doit être fourni.
+
+Retour : Stream d'événements SSE
+Format des événements :
+1. Pour le texte :
+{
+    "type": "text",
+    "content": string    // Texte généré
+}
+
+2. Pour l'audio :
+{
+    "type": "audio",
+    "content": string    // Audio en base64
+}
+
+3. Fin du stream :
+data: [DONE]
+
+Exemple d'utilisation :
+```javascript
+const response = await fetch('/v1/ai/chaining/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+        text: "Bonjour, comment vas-tu ?"
+        // ou audio: "base64_audio_data"
+    })
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    
+    const events = decoder.decode(value).split('\n\n');
+    for (const event of events) {
+        if (event.startsWith('data: ')) {
+            const data = JSON.parse(event.slice(6));
+            if (data.type === 'text') {
+                // Afficher le texte
+                console.log(data.content);
+            } else if (data.type === 'audio') {
+                // Jouer l'audio
+                const audio = new Audio(`data:audio/wav;base64,${data.content}`);
+                await audio.play();
+            }
+        }
+    }
+}
+```
+
+Caractéristiques :
+- Transcription automatique de l'audio en texte (Whisper small)
+- Génération de réponse via LLM
+- Synthèse vocale en français avec voix Elise
+- Streaming bidirectionnel (texte + audio)
+- Historisation des conversations
+
+Notes Techniques :
+- Format audio accepté : WAV en base64
+- Modèle STT par défaut : Whisper small
+- Voix TTS par défaut : Elise (français)
+- Taille maximale audio : 100MB
+- Timeout : 600 secondes
+
+Codes d'erreur :
+- 400 : Aucune entrée fournie (ni texte ni audio)
+- 500 : Erreur de traitement (transcription, génération ou synthèse)
+- 503 : Service temporairement indisponible
+
+Notes Techniques
+--------------
+
+1. Format des Données
+-------------------
+- Images : Base64 (formats acceptés : PNG, JPEG, WebP)
+- Audio : Base64 (format WAV)
+- Texte : UTF-8
+- JSON : Content-Type: application/json
+
+2. Headers Requis
+---------------
+- Content-Type: application/json
+- X-Session-ID: string (optionnel, généré si absent)
+
+3. Gestion des Erreurs
+--------------------
+Codes HTTP standards :
+- 200 : Succès
+- 400 : Requête invalide
+- 401 : Non autorisé
+- 404 : Ressource non trouvée
+- 500 : Erreur serveur
+
+4. Streaming
+-----------
+Format SSE (Server-Sent Events) pour :
+- Génération de texte
+- Génération d'images
+- Text-to-Speech
+- Streaming média
+
+5. CORS
+-------
+- Origines autorisées : *
+- Méthodes : GET, POST, OPTIONS
+- Headers : *
+- Credentials : true
+
+6. Limitations
+------------
+- Taille max requête : 100MB
+- Timeout : 600 secondes
+- Rate limiting : Configuré par nginx
+
+7. Exemples d'Utilisation
+-----------------------
+
+```javascript
+// Exemple
+</rewritten_file>

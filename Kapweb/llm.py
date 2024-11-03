@@ -3,17 +3,22 @@ from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHan
 from os import path
 import json
 from Kapweb.session import UserSession
-import redis
 import os
-
-# Configuration Redis
-redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'localhost'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    decode_responses=True
-)
+import re
 
 current_file = path.realpath(__file__)
+
+# Définition des motifs de ponctuation pour le découpage
+SENTENCE_ENDINGS = r'[.!?]'
+PHRASE_BREAKS = r'[,;:]'
+PUNCTUATION_PATTERN = f"({SENTENCE_ENDINGS}|{PHRASE_BREAKS})"
+
+def format_chunk(chunk: str) -> str:
+    """Formate un chunk de texte pour le streaming en échappant les caractères spéciaux"""
+    return chunk.replace('\n', '\\n')\
+                .replace('\r', '\\r')\
+                .replace('\t', '\\t')\
+                .replace('"', '\\"')\
 
 def load_models(file_path):
     with open(file_path, 'r') as file:
@@ -37,10 +42,6 @@ def format_prompt(messages, system_message, prompt_template=None):
     
     # Assemblage du prompt final
     final_prompt = f"{system_message}\n\n"
-    # if history:
-    #     final_prompt += "Contexte précédent:\n" + "\n".join(history) + "\n\n'
-    
-    # final_prompt += f"{current_prompt}"
     print(final_prompt)
     return final_prompt
 
@@ -62,32 +63,76 @@ def loadLlm(model):
         callback_manager=callback_manager,
         streaming=True,
         verbose=True,
-        # n_threads=6,      # Limiter le nombre de threads
-        # use_mlock=True,   # Améliorer la gestion mémoire
-        # use_mmap=True,    # Utiliser mmap pour le chargement
-        # seed=42           # Fixer une seed pour la reproductibilité
     )
     
     return llm
 
-async def generate_stream(prompt, session: UserSession, model_name=None, models=None):
+async def generate_stream(prompt, session: UserSession, model_name=None, models=None, format_type="chunk"):
+    """
+    Génère un stream de texte avec différentes options de formatage.
+    
+    Args:
+        prompt: Le prompt à traiter
+        session: La session utilisateur
+        model_name: Le nom du modèle à utiliser
+        models: La configuration des modèles
+        format_type: Le type de formatage ("chunk", "line", "encoded", "speech")
+            - "chunk": Envoie les chunks bruts
+            - "line": Envoie ligne par ligne
+            - "encoded": Envoie les chunks avec les retours à la ligne encodés (\n)
+            - "speech": Découpe intelligent pour la synthèse vocale
+    """
+    print(f"Format type: {format_type}")
     try:
-        # Stockage de l'état de la session dans Redis
-        session_key = f"session:{session.id}"
-        redis_client.hset(session_key, mapping={
-            "current_model": model_name,
-            "last_prompt": prompt
-        })
-        
         llm = loadLlm(models[model_name])
-        print(prompt)
-        for chunk in llm.stream(prompt):
-            if chunk:
-                print(chunk)
-                yield f'data: {chunk}\n\n'
+        print(f"Prompt: {prompt}")
+        
+        if format_type == "speech":
+            buffer = ""
+            for chunk in llm.stream(prompt):
+                if chunk:
+                    buffer += chunk
+                    matches = list(re.finditer(PUNCTUATION_PATTERN, buffer))
+                    if matches:
+                        last_match = matches[-1]
+                        split_point = last_match.end()
+                        
+                        sentence = buffer[:split_point].strip()
+                        buffer = buffer[split_point:].strip()
+                        
+                        if sentence:
+                            pause_type = "long" if re.search(SENTENCE_ENDINGS, sentence[-1]) else "short"
+                            yield f'data: {{"text": "{format_chunk(sentence)}", "pause": "{pause_type}"}}\n\n'
+            
+            if buffer.strip():
+                yield f'data: {{"text": "{format_chunk(buffer.strip())}", "pause": "none"}}\n\n'
+                
+        elif format_type == "line":
+            buffer = ""
+            for chunk in llm.stream(prompt):
+                if chunk:
+                    buffer += chunk
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line.strip():
+                            yield f'data: {{"text": "{format_chunk(line)}"}}\n\n'
+                    
+            if buffer.strip():
+                yield f'data: {{"text": "{format_chunk(buffer)}"}}\n\n'
+                
+        elif format_type == "encoded":
+            for chunk in llm.stream(prompt):
+                if chunk:
+                    yield f'data: {{"text": "{format_chunk(chunk)}"}}\n\n'
+                    
+        else:  # format_type == "chunk" (défaut)
+            for chunk in llm.stream(prompt):
+                if chunk:
+                    yield f'data: {{"text": "{format_chunk(chunk)}"}}\n\n'
         
         yield 'data: [DONE]\n\n'
     except Exception as e:
+        print(f"Erreur pendant le streaming: {str(e)}")
         try:
             session.llm.stop()
         except:

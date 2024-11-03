@@ -19,8 +19,8 @@ class SpeechProcessor:
         self.stt_model = None
         self.current_tts_model = None
         self.current_stt_model = None
-
-    async def init_tts(self, model_name="tts_models/multilingual/multi-dataset/xtts_v2"):
+#multilingual/multi-dataset/xtts_v2
+    async def init_tts(self, model_name="tts_models/fr/css10/vits"):
         """Initialise le modèle TTS"""
         try:
             if self.current_tts_model == model_name and self.tts_model:
@@ -57,13 +57,14 @@ class SpeechProcessor:
             print(f"Erreur lors du chargement du modèle STT: {str(e)}")
             raise
 
-    async def text_to_speech(self, text, voice_path=None, language="fr"):
+    async def text_to_speech(self, text, voice=None, language="fr", stream=True):
         """Convertit du texte en audio avec streaming"""
         # Définir le chemin de base pour les voix
+        voice_path = None
         base_voice_path = path.join(path.dirname(current_file), "voices")
-        if voice_path:
-            voice_path = path.join(base_voice_path, voice_path)
-        print(voice_path)    
+        if voice:
+            voice_path = path.join(base_voice_path, voice+".wav")
+        print(voice_path)
         try:
             if not self.tts_model:
                 raise ValueError("Le modèle TTS n'est pas chargé")
@@ -75,15 +76,16 @@ class SpeechProcessor:
             total_steps = len(text.split()) # Estimation basée sur le nombre de mots
             for step in range(total_steps):
                 progress = ((step + 1) / total_steps) * 100
-                yield f'data: {{"progress": {progress:.2f}}}\n\n'
-                await asyncio.sleep(0.1)
+                if stream:
+                    yield f'data: {{"progress": {progress:.2f}}}\n\n'
+                    await asyncio.sleep(0.1)
 
             # Générer l'audio
             if voice_path:
                 wav = self.tts_model.tts(
                     text=text,
-                    speaker_wav=voice_path,
-                    language=language
+                    #speaker_wav=voice_path,
+                    #language=language
                 )
             else:
                 wav = self.tts_model.tts(text=text, language=language)
@@ -92,10 +94,16 @@ class SpeechProcessor:
             sf.write(audio_buffer, wav, self.tts_model.synthesizer.output_sample_rate, format='WAV')
             audio_base64 = base64.b64encode(audio_buffer.getvalue()).decode()
 
-            yield f'data: {{"status": "completed", "audio": "{audio_base64}", "sample_rate": {self.tts_model.synthesizer.output_sample_rate}}}\n\n'
+            if stream:
+                yield f'data: {{"status": "completed", "audio": "{audio_base64}", "sample_rate": {self.tts_model.synthesizer.output_sample_rate}}}\n\n'
+            else:
+                yield f'data: {audio_base64}'
 
         except Exception as e:
-            yield f'data: {{"error": "Erreur lors de la synthèse vocale : {str(e)}"}}\n\n'
+            if stream:
+                yield f'data: {{"error": "Erreur lors de la synthèse vocale : {str(e)}"}}\n\n'
+            else:
+                yield f'data: [DONE]'
 
     async def speech_to_text(self, audio_data):
         """Convertit l'audio en texte"""
@@ -188,11 +196,11 @@ class SpeechProcessor:
                     "voices":
                         [
                             {
-                                "path": "morgan.wav",
+                                "path": "morgan",
                                 "label":"Morgan Freeman"
                             },
                              {
-                                "path": "elise.wav",
+                                "path": "elise",
                                 "label":"Elise"
                             }
                         ]

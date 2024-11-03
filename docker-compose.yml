@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   llm:
+    container_name: brenda_llm
     image: python:3.12-slim
     working_dir: /app
     volumes:
@@ -13,21 +14,23 @@ services:
     ports:
       - "10000:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
+      - KAPWEB_DEBUG=1
     entrypoint: >
         /bin/sh -c "
         apt-get update &&
         apt-get install -y build-essential cmake &&
         rm -rf /var/lib/apt/lists/* &&
         pip install --no-cache-dir -r /app/requirements.txt &&
-        uvicorn server:app --host 0.0.0.0 --port 8000
+        if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+          uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+        else
+          uvicorn server:app --host 0.0.0.0 --port 8000;
+        fi
         "
 
-  image_service:
+  image:
+    container_name: brenda_image
     image: python:3.12-slim
     working_dir: /app
     volumes:
@@ -39,21 +42,23 @@ services:
     ports:
       - "10001:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
+      - KAPWEB_DEBUG=1
     entrypoint: >
       /bin/sh -c "
       apt-get update &&
       apt-get install -y build-essential cmake tesseract-ocr tesseract-ocr-fra tesseract-ocr-eng &&
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
       "
 
   translation:
+    container_name: brenda_translation
     image: python:3.12-slim
     working_dir: /app
     volumes:
@@ -64,21 +69,23 @@ services:
     ports:
       - "10002:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
+      - KAPWEB_DEBUG=1
     entrypoint: >
       /bin/sh -c "
       apt-get update &&
       apt-get install -y build-essential cmake &&
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
       "
-  
+
   speech:
+    container_name: brenda_speech
     image: python:3.12-slim
     working_dir: /app
     volumes:
@@ -89,24 +96,26 @@ services:
     ports:
       - "10003:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - COQUI_TOS_AGREED=1
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
+      - KAPWEB_DEBUG=1
     entrypoint: >
       /bin/sh -c "
       apt-get update &&
       apt-get install -y build-essential cmake curl libsndfile1 &&
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
-      PATH="/root/.cargo/bin:${PATH}" &&
+      export PATH=\"/root/.cargo/bin:\$PATH\" &&
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
       "
-  
+
   media:
+    container_name: brenda_media
     image: python:3.12-slim
     working_dir: /app
     volumes:
@@ -118,40 +127,136 @@ services:
     ports:
       - "10004:8000"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - redis
+      - KAPWEB_DEBUG=1
     entrypoint: >
       /bin/sh -c "
       apt-get update &&
       apt-get install -y build-essential cmake &&
       rm -rf /var/lib/apt/lists/* &&
       pip install --no-cache-dir -r /app/requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
       "
-  
+
+  monitor:
+    container_name: brenda_monitor
+    image: python:3.12-slim
+    working_dir: /app
+    privileged: true
+    volumes:
+      - ./Cache:/app/Cache
+      - ./Kapweb:/app/Kapweb
+      - ./Services/monitor.py:/app/server.py
+      - ./Services/monitor.requirements.txt:/app/requirements.txt
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "10005:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KAPWEB_DEBUG=1
+    entrypoint: >
+      /bin/sh -c "
+      apt-get update &&
+      apt-get install -y build-essential cmake &&
+      rm -rf /var/lib/apt/lists/* &&
+      pip install --no-cache-dir -r /app/requirements.txt &&
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
+      "
+
   nginx:
+    container_name: brenda_nginx
     image: nginx:alpine
     ports:
       - "8000:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./cors.conf:/etc/nginx/cors.conf:ro
-    depends_on:
-      - llm
-      - image_service
-      - translation
-      - speech
-      - media
+    restart: unless-stopped
 
   redis:
+    container_name: brenda_redis
     image: redis:alpine
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ./Storage/Redis:/data
 
-volumes:
-  redis_data:
+  storage:
+    container_name: brenda_storage
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./Cache:/app/Cache
+      - ./Kapweb:/app/Kapweb
+      - ./Services/storage.py:/app/server.py
+      - ./Services/storage.requirements.txt:/app/requirements.txt
+      - ./Storage/Chroma:/app/chroma_storage
+    ports:
+      - "10006:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_DB=brenda
+      - STORAGE_BACKEND=redis
+      - CHROMA_PERSIST_DIR=/app/chroma_storage
+      - PYTHONUNBUFFERED=1
+      - KAPWEB_DEBUG=1
+    depends_on:
+      - redis
+      - mongo
+    entrypoint: >
+      /bin/sh -c "
+      apt-get update &&
+      apt-get install -y build-essential cmake &&
+      rm -rf /var/lib/apt/lists/* &&
+      pip install --no-cache-dir -r /app/requirements.txt &&
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
+      "
+
+  mongo:
+    container_name: brenda_mongo
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./Storage/MongoDb:/data/db
+
+  chaining:
+    container_name: brenda_chaining
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./Cache:/app/Cache
+      - ./Kapweb:/app/Kapweb
+      - ./Services/chaining.py:/app/server.py
+      - ./Services/chaining.requirements.txt:/app/requirements.txt
+    ports:
+      - "10007:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - KAPWEB_DEBUG=1
+    entrypoint: >
+      /bin/sh -c "
+      apt-get update &&
+      apt-get install -y build-essential cmake &&
+      rm -rf /var/lib/apt/lists/* &&
+      pip install --no-cache-dir -r /app/requirements.txt &&
+      if [ \"$$KAPWEB_DEBUG\" = \"1\" ]; then
+        uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app;
+      else
+        uvicorn server:app --host 0.0.0.0 --port 8000;
+      fi
+      "

@@ -4,7 +4,7 @@ pillow
 diffusers
 transformers
 torch
-accelerate
-redis 
+accelerate 
 python-slugify
 pytesseract
+httpx

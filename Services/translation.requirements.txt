@@ -4,5 +4,5 @@ transformers
 sentencepiece
 sacremoses
 diffusers
-redis 
 torch
+httpx

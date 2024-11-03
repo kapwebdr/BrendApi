@@ -4,4 +4,5 @@ fastapi
 uvicorn
 langchain_community
 langchain_core
-redis
+httpx
+pydantic
