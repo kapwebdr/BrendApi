@@ -14,7 +14,6 @@ import pytesseract
 import httpx
 from datetime import datetime
 from Kapweb.services import ServiceHelper
-
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +26,7 @@ app.add_middleware(
 
 service = ServiceHelper("image")
 session_manager = SessionManager()
+media_generator.models_config_path= '/app/serve'
 
 async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession:
     if not x_session_id:
@@ -41,6 +41,7 @@ async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession
 @app.post("/v1/ai/image/models")
 async def list_models():
     try:
+        
         return JSONResponse(content={"models": media_generator.get_available_models()})
     except Exception as e:
         raise HTTPException(

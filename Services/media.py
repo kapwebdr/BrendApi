@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.media import media_generator, media_analyzer
+from Kapweb.media import MediaGenerator,media_generator, media_analyzer
 from Kapweb.services import ServiceHelper
 import base64
 import uuid
@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 service = ServiceHelper("media")
-
+media_generator = MediaGenerator(models_config_path="/app/serve")
 @app.post("/v1/ai/media/url/analyze")
 async def analyze_url(request: Request):
     data = await request.json()

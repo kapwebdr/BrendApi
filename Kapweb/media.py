@@ -14,17 +14,20 @@ import asyncio
 current_file = path.realpath(__file__)
 
 def load_media_models(file_path):
+    print(file_path)
     with open(file_path, 'r') as file:
         return json.load(file)
 
 class MediaGenerator:
-    def __init__(self, cache_dir=None):
+    def __init__(self, cache_dir=None, models_config_path=None):
+        print(f"Initialisation de MediaGenerator avec models_config_path: {models_config_path} {cache_dir}")
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
         self.device = "mps" #if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
         self.torch_dtype = torch.float16  #torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
         self.pipe = None
         self.current_model = None
-        self.models_config = load_media_models(path.join(path.dirname(current_file), "..", "image_models.json"))
+        self.models_config_path = models_config_path or path.join(path.dirname(current_file),"..")
+        
 
     def get_model_config(self, model_type):
         """Récupère la configuration d'un modèle à partir de son type"""
@@ -141,6 +144,7 @@ class MediaGenerator:
             yield f'data: {{"error": "Erreur lors du raffinement : {str(e)}"}}\n\n'
 
     def get_available_models(self):
+        self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
         """Retourne la liste des modèles disponibles avec leurs détails"""
         models = {}
         for category, category_models in self.models_config.items():

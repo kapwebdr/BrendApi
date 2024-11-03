@@ -36,7 +36,7 @@ async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession
 @app.post("/v1/ai/models")
 async def list_models(session: UserSession = Depends(get_session)):
     try:
-        available_models = load_models("/app/models.json")
+        available_models = load_models("/app/serve/models.json")
         return JSONResponse(
             content={"models": list(available_models.keys())},
             headers={"X-Session-ID": session.session_id}
@@ -50,7 +50,7 @@ async def list_models(session: UserSession = Depends(get_session)):
 @app.post("/v1/ai/load_model")
 async def load_model_endpoint(request: Request, session: UserSession = Depends(get_session)):
     data = await request.json()
-    available_models = load_models("/app/models.json")
+    available_models = load_models("/app/serve/models.json")
     
     if "model_name" not in data:
         raise HTTPException(status_code=400, detail="Nom du modèle requis")
@@ -94,7 +94,7 @@ async def generate(request: Request, session: UserSession = Depends(get_session)
         system_message=data.get("system", brenda_system)
     )
     
-    available_models = load_models("/app/models.json")
+    available_models = load_models("/app/serve/models.json")
     
     # Stockage du prompt et de l'historique
     await service.store_data(
