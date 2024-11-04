@@ -6,3 +6,4 @@ sacremoses
 diffusers
 torch
 httpx
+aiohttp

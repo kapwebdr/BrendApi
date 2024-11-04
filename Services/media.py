@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.media import MediaGenerator,media_generator, media_analyzer
+from Kapweb.media import media_generator, media_analyzer
+from Kapweb.http import http_processor
 from Kapweb.services import ServiceHelper
 import base64
 import uuid
@@ -18,7 +19,8 @@ app.add_middleware(
 )
 
 service = ServiceHelper("media")
-media_generator = MediaGenerator(models_config_path="/app/serve")
+media_generator.models_config_path= '/app/Config/'
+
 @app.post("/v1/ai/media/url/analyze")
 async def analyze_url(request: Request):
     data = await request.json()
@@ -36,7 +38,8 @@ async def analyze_url(request: Request):
             collection="media_requests"
         )
         
-        result = await media_analyzer.analyze_url(data["url"])
+        async with http_processor as http:
+            result = await http.analyze_url(data["url"])
         
         await service.store_data(
             key=f"analyze_result_{request_id}",
@@ -60,20 +63,19 @@ async def extract_url(request: Request):
             key=f"extract_{request_id}",
             value={
                 "url": data["url"],
+                "selectors": data["selectors"],
                 "timestamp": str(datetime.now())
             },
             collection="media_requests"
         )
         
-        result = await media_analyzer.extract_url_content(data["url"])
-        
-        await service.store_data(
-            key=f"extract_result_{request_id}",
-            value=result,
-            collection="media_results"
-        )
-        
-        return JSONResponse(content=result)
+        async with http_processor as http:
+            return StreamingResponse(
+                http.extract_content(data["url"], data["selectors"]),
+                media_type="text/event-stream"
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -94,10 +96,11 @@ async def stream_url(request: Request):
             collection="media_requests"
         )
         
-        return StreamingResponse(
-            media_analyzer.stream_url(data["url"]),
-            media_type="text/event-stream"
-        )
+        async with http_processor as http:
+            return StreamingResponse(
+                http.stream_content(data["url"]),
+                media_type="text/event-stream"
+            )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

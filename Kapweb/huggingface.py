@@ -8,7 +8,7 @@ async def download_model(model):
     save_path = path.join(path.dirname(__file__), "..", "Cache", "LlamaCppModel", 
                          model['model_name'].replace('/', path.sep), model['model_file'])
     temp_path = save_path + '.downloading'
-
+    print('downloading', model_url)
     async def get_remote_size():
         async with aiohttp.ClientSession() as session:
             headers = {'Range': 'bytes=0-0'}
@@ -75,7 +75,7 @@ async def download_model(model):
                     raise Exception(f"Téléchargement incomplet: {download_size}/{remote_size} octets")
                 
                 os.rename(temp_path, save_path)
-                yield f'data: {{"status": "completed", "path": "{save_path}"}}\n\n'
+                yield f'data: {{"status": "downloaded", "path": "{save_path}"}}\n\n'
 
     except Exception as e:
         if path.exists(save_path) and path.getsize(save_path) != remote_size:

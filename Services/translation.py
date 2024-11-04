@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse,JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from Kapweb.trad import translator
 from Kapweb.services import ServiceHelper
@@ -45,22 +45,19 @@ async def translate_text(request: Request):
             collection="translation_requests"
         )
         
-        result = await translator.translate(
-            text=data["text"],
-            from_lang=data["from_lang"],
-            to_lang=data["to_lang"]
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=500, detail=result["error"])
-        
         await service.store_data(
             key=f"translate_result_{request_id}",
-            value=result,
+            value=f"test",
             collection="translation_results"
         )
-            
-        return JSONResponse(content=result)
+        return StreamingResponse(
+            translator.translate(
+                text=data["text"],
+                from_lang=data["from_lang"],
+                to_lang=data["to_lang"]
+            ),
+            media_type="text/event-stream"
+        )    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

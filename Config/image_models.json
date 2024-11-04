@@ -3,6 +3,7 @@
         "base": {
             "name": "SDXL Base",
             "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
+            "model_file": "sd_xl_base_1.0.safetensors",
             "type": "text2image",
             "config": {
                 "torch_dtype": "float16",
@@ -13,6 +14,7 @@
         "turbo": {
             "name": "SDXL Turbo",
             "model_id": "stabilityai/sdxl-turbo",
+            "model_file": "sd_xl_turbo_1.0.safetensors",
             "type": "text2image",
             "config": {
                 "torch_dtype": "float16",
@@ -23,6 +25,7 @@
         "refiner": {
             "name": "SDXL Refiner",
             "model_id": "stabilityai/stable-diffusion-xl-refiner-1.0",
+            "model_file": "sd_xl_refiner_1.0.safetensors",
             "type": "refiner",
             "config": {
                 "torch_dtype": "float16",
@@ -35,6 +38,7 @@
         "v1.5": {
             "name": "Stable Diffusion 1.5",
             "model_id": "runwayml/stable-diffusion-v1-5",
+            "model_file": "v1-5-pruned.safetensors",
             "type": "text2image",
             "config": {
                 "torch_dtype": "float16",
@@ -45,6 +49,7 @@
         "v3.5": {
             "name": "Stable Diffusion 3.5",
             "model_id": "adamo1139/stable-diffusion-3.5-large-ungated",
+            "model_file": "sd_3_5_large_v2_0.safetensors",
             "type": "text2image",
             "config": {
                 "torch_dtype": "float16",

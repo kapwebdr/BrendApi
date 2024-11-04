@@ -365,6 +365,80 @@ Format SSE (Server-Sent Events) pour :
 7. Exemples d'Utilisation
 -----------------------
 
+# Service Files API
+
+Le service Files gère toutes les opérations liées aux fichiers et répertoires.
+
+## Endpoints
+
+### Gestion des répertoires
+
+POST /v1/files/directory/create
+- Crée un nouveau répertoire
+- Body: { "path": "chemin/du/repertoire" }
+
+POST /v1/files/directory/move
+- Déplace un répertoire
+- Body: { "source": "chemin/source", "destination": "chemin/destination" }
+
+DELETE /v1/files/directory/delete
+- Supprime un répertoire
+- Body: { "path": "chemin/du/repertoire" }
+
+POST /v1/files/directory/compress
+- Compresse un répertoire en ZIP
+- Body: { "path": "chemin/du/repertoire", "zip_name": "nom_archive.zip" }
+
+### Gestion des fichiers
+
+POST /v1/files/upload
+- Upload un ou plusieurs fichiers
+- FormData: 
+  - files: Liste des fichiers
+  - path: Chemin de destination
+
+POST /v1/files/move
+- Déplace un fichier
+- Body: { "source": "chemin/source", "destination": "chemin/destination" }
+
+DELETE /v1/files/delete
+- Supprime un fichier
+- Body: { "path": "chemin/du/fichier" }
+
+GET /v1/files/download/{path}
+- Télécharge un fichier
+- Path parameter: chemin du fichier
+
+GET /v1/files/stream/{path}
+- Stream un fichier
+- Path parameter: chemin du fichier
+
+POST /v1/files/decompress
+- Décompresse un fichier ZIP
+- Body: { "path": "chemin/du/zip", "extract_path": "chemin/extraction" }
+
+### Navigation
+
+GET /v1/files/list/{path}
+- Liste le contenu d'un répertoire
+- Path parameter: chemin du répertoire (optionnel)
+- Retourne la liste des fichiers et sous-répertoires
+
+### Monitoring
+
+GET /ready
+- Vérifie si le service est prêt
+- Retourne un statut 200 si le service est opérationnel
+
+## Caractéristiques
+
+- Support des gros fichiers (jusqu'à 100MB)
+- Streaming pour les fichiers volumineux
+- Gestion des archives ZIP
+- Validation des chemins pour la sécurité
+- Support CORS
+- Gestion des erreurs avec codes HTTP appropriés
+
 ```javascript
 // Exemple
 </rewritten_file>

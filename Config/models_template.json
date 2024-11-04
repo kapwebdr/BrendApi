@@ -1,0 +1,9 @@
+{
+    "llama-3":
+    {
+        "pre_prompt":"<|begin_of_text|>\n",
+        "system_prompt":"<|start_header_id|>system<|end_header_id|>\n{system}\n",
+        "user_prompt":"<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n{user}\n",
+        "assistant_prompt":"<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n{assistant}\n"
+    }
+}

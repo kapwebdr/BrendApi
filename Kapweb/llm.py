@@ -1,5 +1,6 @@
 from langchain_community.llms import LlamaCpp
 from langchain_core.callbacks import CallbackManager, StreamingStdOutCallbackHandler
+from langchain.prompts import PromptTemplate
 from os import path
 import json
 from Kapweb.session import UserSession
@@ -29,21 +30,30 @@ brenda_llm_config = {"max_new_tokens":2048,"context_length":2048,"temperature":0
 brenda_system = "Tu es Brenda, mon assistante, secrétaire personnelle."
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
+def get_prompt_template(template_name: str,_template_path :str=None) -> any:
+    """Récupère le template de prompt correspondant au nom donné"""
+    template_path = _template_path or path.join(path.dirname(current_file), "..", "models_template.json")
+    template_path = '/app/Config/models_template.json'
+    with open(template_path, 'r') as file:
+        templates = json.load(file)
+    return templates.get(template_name)
+    
+
 def format_prompt(messages, system_message, prompt_template=None):
     # Construction de l'historique et du prompt
     history = []
     current_prompt = ""
-    
+    prompt = prompt_template['pre_prompt'];
+    prompt += prompt_template['system_prompt'].format(system=system_message);
+
     for message in messages:
-        if message['role'] in ['user', 'human']:
-            current_prompt = message['content']
-        elif message['role'] in ['assistant', 'ai']:
-            history.append(message['content'])
-    
-    # Assemblage du prompt final
-    final_prompt = f"{system_message}\n\n"
-    print(final_prompt)
-    return final_prompt
+       if message['role'] in ['user', 'human']:
+            prompt += prompt_template['user_prompt'].format(user=message['content']);
+       elif message['role'] in ['assistant', 'ai']:
+            prompt += prompt_template['assistant_prompt'].format(assistant=message['content']);
+
+    prompt += prompt_template['assistant_prompt'].format(assistant="");
+    return prompt
 
 def loadLlm(model):
     model_path = path.join(path.dirname(current_file), "..", "Cache", "LlamaCppModel", 
@@ -62,7 +72,7 @@ def loadLlm(model):
         config=brenda_llm_config,
         callback_manager=callback_manager,
         streaming=True,
-        verbose=True,
+        #verbose=True,
     )
     
     return llm
@@ -82,7 +92,7 @@ async def generate_stream(prompt, session: UserSession, model_name=None, models=
             - "encoded": Envoie les chunks avec les retours à la ligne encodés (\n)
             - "speech": Découpe intelligent pour la synthèse vocale
     """
-    print(f"Format type: {format_type}")
+    # print(f"Format type: {format_type}")
     try:
         llm = loadLlm(models[model_name])
         print(f"Prompt: {prompt}")

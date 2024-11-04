@@ -23,7 +23,7 @@ app.add_middleware(
 
 service = ServiceHelper("image")
 session_manager = SessionManager()
-media_generator.models_config_path= '/app/serve'
+media_generator.models_config_path= '/app/Config/'
 
 async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession:
     if not x_session_id:
@@ -213,6 +213,45 @@ async def ready():
     return await service.check_ready({
         "tesseract": pytesseract.get_tesseract_version
     })
+
+@app.post("/v1/ai/image/load_model")
+async def load_model_endpoint(request: Request, session: UserSession = Depends(get_session)):
+    data = await request.json()
+    
+    if "model_type" not in data:
+        raise HTTPException(status_code=400, detail="Type de modèle requis")
+    
+    model_type = data["model_type"]
+    available_models = media_generator.get_available_models()
+    
+    if model_type not in available_models:
+        raise HTTPException(status_code=404, detail="Modèle non trouvé")
+
+    async def stream_response():
+        try:
+            model_config = media_generator.get_model_config(model_type)
+            async for chunk in media_generator.load_model(model_type):
+                yield chunk
+            yield f'data: {{"status": "loaded"}}\n\n'
+            
+            # Stockage de l'état de la session
+            await service.store_data(
+                key=session.session_id,
+                value={
+                    "current_model": model_type,
+                    "model_config": model_config
+                },
+                collection="image_sessions"
+            )
+            
+        except Exception as e:
+            yield f'data: {{"error": "Échec du chargement du modèle: {str(e)}"}}\n\n'
+    
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={"X-Session-ID": session.session_id}
+    )
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,8 +2,9 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from Kapweb.session import SessionManager, UserSession
-from Kapweb.llm import load_models, loadLlm, format_prompt, brenda_system, generate_stream
+from Kapweb.llm import get_prompt_template, load_models, loadLlm, format_prompt, brenda_system, generate_stream
 from Kapweb.services import ServiceHelper
+from Kapweb.huggingface import download_model
 from typing import Optional
 import os
 import httpx
@@ -36,7 +37,7 @@ async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession
 @app.post("/v1/ai/models")
 async def list_models(session: UserSession = Depends(get_session)):
     try:
-        available_models = load_models("/app/serve/models.json")
+        available_models = load_models("/app/Config/models.json")
         return JSONResponse(
             content={"models": list(available_models.keys())},
             headers={"X-Session-ID": session.session_id}
@@ -50,21 +51,27 @@ async def list_models(session: UserSession = Depends(get_session)):
 @app.post("/v1/ai/load_model")
 async def load_model_endpoint(request: Request, session: UserSession = Depends(get_session)):
     data = await request.json()
-    available_models = load_models("/app/serve/models.json")
+    available_models = load_models("/app/Config/models.json")
     
     if "model_name" not in data:
         raise HTTPException(status_code=400, detail="Nom du modèle requis")
     
     model_name = data["model_name"]
+    
     if model_name not in available_models:
         raise HTTPException(status_code=404, detail="Modèle non trouvé")
 
-    llm = loadLlm(available_models[model_name])
-    if llm:
-        session.llm = llm
-        session.current_model = model_name
-        session.loaded_model_config = available_models[model_name]
-        
+    async def stream_response():
+        async for chunk in download_model(available_models[model_name]):
+            yield chunk
+        llm = loadLlm(available_models[model_name])
+        if llm:
+            session.llm = llm
+            session.current_model = model_name
+            session.loaded_model_config = available_models[model_name]
+            yield f'data: {{"status": "loaded"}}\n\n'
+        else:
+            yield f'data: {{"error": "Échec du chargement du modèle"}}\n\n'
         # Stockage de l'état de la session
         await service.store_data(
             key=session.session_id,
@@ -75,13 +82,12 @@ async def load_model_endpoint(request: Request, session: UserSession = Depends(g
             collection="llm_sessions"
         )
         
-        return JSONResponse(
-            content={"status": "loaded"},
+    return StreamingResponse(
+            stream_response(), 
+            media_type="text/event-stream",
             headers={"X-Session-ID": session.session_id}
         )
-    else:
-        raise HTTPException(status_code=500, detail="Échec du chargement du modèle")
-
+    
 @app.post("/v1/ai/generate")
 async def generate(request: Request, session: UserSession = Depends(get_session)):
     data = await request.json()
@@ -89,13 +95,16 @@ async def generate(request: Request, session: UserSession = Depends(get_session)
     if not all(field in data for field in required_fields):
         raise HTTPException(status_code=400, detail="Configuration LLM invalide")
     
+    available_models = load_models("/app/Config/models.json")
+    model_config = available_models[data["model"]]
+    prompt_template = get_prompt_template(model_config.get("template"),'/app/Config/models_template.json')
+    
     formatted_prompt = format_prompt(
         messages=data["messages"],
-        system_message=data.get("system", brenda_system)
+        system_message=data.get("system", brenda_system),
+        prompt_template=prompt_template  #
     )
-    
-    available_models = load_models("/app/serve/models.json")
-    
+    print("formatted_prompt :: ",formatted_prompt)
     # Stockage du prompt et de l'historique
     await service.store_data(
         key=f"{session.session_id}_last_prompt",

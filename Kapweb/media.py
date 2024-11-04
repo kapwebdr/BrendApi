@@ -9,6 +9,7 @@ import os
 import io
 import base64
 import asyncio
+from Kapweb.huggingface import download_model
 
 current_file = path.realpath(__file__)
 
@@ -21,11 +22,12 @@ class MediaGenerator:
     def __init__(self, cache_dir=None, models_config_path=None):
         print(f"Initialisation de MediaGenerator avec models_config_path: {models_config_path} {cache_dir}")
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
-        self.device = "cpu" #if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
-        self.torch_dtype = torch.float16  #torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
+        self.device =  "mps"if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        self.torch_dtype = torch.float32  #torch.float32 if self.device == "mps" else torch.float16  # float32 pour MPS
         self.pipe = None
         self.current_model = None
         self.models_config_path = models_config_path or path.join(path.dirname(current_file),"..")
+        self.model_cache_dir = path.join(self.cache_dir, "LlamaCppModel")
         
     def get_model_config(self, model_type):
         self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
@@ -51,22 +53,29 @@ class MediaGenerator:
 
             print(f"Chargement du modèle: {model_config['name']}")
             
+            # Vérifier si le modèle est dans le cache
+            model_path = path.join(self.model_cache_dir, model_config["model_id"])
+            if not path.exists(model_path):
+                raise ValueError(f"Le modèle n'est pas téléchargé: {model_type}")
+            
             model_kwargs = model_config['config'].copy()
             if self.device == "cpu":
                 model_kwargs["torch_dtype"] = self.torch_dtype
                 if "variant" in model_kwargs:
-                    del model_kwargs["variant"]  # Supprimer variant pour MPS
+                    del model_kwargs["variant"]
             
             if model_config['type'] == 'text2image':
                 self.pipe = AutoPipelineForText2Image.from_pretrained(
                     model_config['model_id'],
-                    cache_dir=path.join(self.cache_dir, "DiffusersCache"),
+                    cache_dir=self.model_cache_dir,
+                    ignore_mismatched_sizes=True,
                     **model_kwargs
                 )
             elif model_config['type'] == 'image2image':
                 self.pipe = AutoPipelineForImage2Image.from_pretrained(
                     model_config['model_id'],
-                    cache_dir=path.join(self.cache_dir, "DiffusersCache"),
+                    cache_dir=self.model_cache_dir,
+                    ignore_mismatched_sizes=True,
                     **model_kwargs
                 )
                 
@@ -164,6 +173,25 @@ class MediaGenerator:
         image_path = path.join(dirpath, image_name)
         image.save(image_path)
         return image_name
+
+    async def load_model(self, model_type):
+        """Télécharge et charge le modèle si nécessaire"""
+        try:
+            model_config = self.get_model_config(model_type)
+            model_info = {
+                "model_name": model_config["model_id"],
+                "model_file": model_config.get("model_file")
+            }
+            print(model_info)
+            # Vérifier si le modèle doit être téléchargé
+            async for chunk in download_model(model_info):
+                yield chunk
+
+            # Initialiser le modèle
+            await self.init_model(model_type)
+            
+        except Exception as e:
+            yield f'data: {{"error": "Erreur lors du chargement du modèle: {str(e)}"}}\n\n'
 
 class MediaAnalyzer:
     def __init__(self, cache_dir=None):

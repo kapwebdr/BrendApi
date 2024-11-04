@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+aiofiles
+python-magic
+zipfile38
+pillow
+redis 
+httpx
