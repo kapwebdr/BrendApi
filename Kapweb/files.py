@@ -15,7 +15,10 @@ class FileManager:
 
     def _validate_path(self, path: str) -> Path:
         """Valide et retourne un chemin sécurisé"""
-        full_path = (self.base_path / path).resolve()
+        clean_path = Path(path).resolve().relative_to(Path(path).resolve().anchor)
+        full_path = (self.base_path / clean_path).resolve()
+        print('full_path', full_path)
+        
         if not str(full_path).startswith(str(self.base_path)):
             raise ValueError("Chemin non autorisé")
         return full_path

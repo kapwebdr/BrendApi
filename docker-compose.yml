@@ -286,7 +286,6 @@ services:
       - ./Config/:/app/Config/
       - ./Services/files.py:/app/serve/server.py
       - ./Services/files.requirements.txt:/app/requirements.txt
-      - ./Storage/Files:/app/files_storage
     ports:
       - "10008:8000"
     environment:

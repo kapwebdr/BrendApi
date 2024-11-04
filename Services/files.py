@@ -21,6 +21,7 @@ service = ServiceHelper("files")
 
 @app.post("/v1/files/directory/create")
 async def create_directory(request: Request):
+    print("create_directory")
     data = await request.json()
     if "path" not in data:
         raise HTTPException(status_code=400, detail="Chemin requis")
@@ -88,20 +89,28 @@ async def delete_directory(request: Request):
         raise HTTPException(status_code=500, detail=result["error"])
     return JSONResponse(content=result)
 
-@app.get("/v1/files/download/{path:path}")
-async def download_file(path: str):
+@app.post("/v1/files/download")
+async def download_file(request: Request):
+    data = await request.json()
+    if "path" not in data:
+        raise HTTPException(status_code=400, detail="Chemin requis")
+    
     try:
         return FileResponse(
-            file_manager._validate_path(path),
-            filename=path.split("/")[-1]
+            file_manager._validate_path(data["path"]),
+            filename=data["path"].split("/")[-1]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/v1/files/stream/{path:path}")
-async def stream_file(path: str):
+@app.post("/v1/files/stream")
+async def stream_file(request: Request):
+    data = await request.json()
+    if "path" not in data:
+        raise HTTPException(status_code=400, detail="Chemin requis")
+        
     return StreamingResponse(
-        file_manager.stream_file(path),
+        file_manager.stream_file(data["path"]),
         media_type="text/event-stream"
     )
 
@@ -133,14 +142,17 @@ async def decompress_zip(request: Request):
         raise HTTPException(status_code=500, detail=result["error"])
     return JSONResponse(content=result)
 
-@app.get("/v1/files/list/{path:path}")
-async def list_directory(path: str = ""):
+@app.post("/v1/files/list")
+async def list_directory(request: Request):
+    data = await request.json()
+    path = data.get("path", "")
+    
     result = await file_manager.list_directory(path)
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return JSONResponse(content=result)
 
-@app.get("/ready")
+@app.post("/ready")
 async def ready():
     """Endpoint indiquant que le service est prêt"""
     return await service.check_ready()
