@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.media import media_generator, media_analyzer
+from Kapweb.media import media_generator, media_analyzer, StreamResponse, MediaCallbacks
 from Kapweb.http import http_processor
 from Kapweb.services import ServiceHelper
 import base64
 import uuid
 from datetime import datetime
+import json
 
 app = FastAPI()
 app.add_middleware(
@@ -38,16 +39,22 @@ async def analyze_url(request: Request):
             collection="media_requests"
         )
         
-        async with http_processor as http:
-            result = await http.analyze_url(data["url"])
-        
-        await service.store_data(
-            key=f"analyze_result_{request_id}",
-            value=result,
-            collection="media_results"
+        async def stream_response():
+            async for response in media_analyzer.analyze_url(data["url"]):
+                if response.type == "status":
+                    if response.content == "completed":
+                        yield f'data: {{"status": "completed", "result": {json.dumps(response.metadata)}}}\n\n'
+                    else:
+                        yield f'data: {{"status": "{response.content}"}}\n\n'
+                elif response.type == "progress":
+                    yield f'data: {{"progress": {response.content}, "message": "{response.metadata["message"]}"}}\n\n'
+                elif response.type == "error":
+                    yield f'data: {{"error": "{response.content}"}}\n\n'
+            
+        return StreamingResponse(
+            stream_response(),
+            media_type="text/event-stream"
         )
-        
-        return JSONResponse(content=result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.files import file_manager
+from Kapweb.files import file_manager, StreamResponse, FileCallbacks
 from Kapweb.services import ServiceHelper
 from typing import List, Optional
 import uuid
@@ -109,8 +109,22 @@ async def stream_file(request: Request):
     if "path" not in data:
         raise HTTPException(status_code=400, detail="Chemin requis")
         
+    async def stream_response():
+        async for response in file_manager.stream_file(data["path"]):
+            if response.type == "data":
+                yield f'data: {{"chunk": "{response.content}", "progress": {response.metadata["progress"]}}}\n\n'
+            elif response.type == "status":
+                if response.content == "completed":
+                    yield f'data: {{"status": "completed", "path": "{response.metadata["path"]}", "size": {response.metadata["size"]}}}\n\n'
+                else:
+                    yield f'data: {{"status": "{response.content}"}}\n\n'
+            elif response.type == "error":
+                yield f'data: {{"error": "{response.content}"}}\n\n'
+        
+        yield 'data: [DONE]\n\n'
+
     return StreamingResponse(
-        file_manager.stream_file(data["path"]),
+        stream_response(),
         media_type="text/event-stream"
     )
 
@@ -120,13 +134,27 @@ async def compress_directory(request: Request):
     if "path" not in data:
         raise HTTPException(status_code=400, detail="Chemin requis")
     
-    result = await file_manager.compress_directory(
-        data["path"],
-        data.get("zip_name")
+    async def stream_response():
+        async for response in file_manager.compress_directory(
+            data["path"],
+            data.get("zip_name")
+        ):
+            if response.type == "progress":
+                yield f'data: {{"progress": {response.content}, "file": "{response.metadata["file"]}"}}\n\n'
+            elif response.type == "status":
+                if response.content == "completed":
+                    yield f'data: {{"status": "completed", "path": "{response.metadata["path"]}", "size": {response.metadata["size"]}}}\n\n'
+                else:
+                    yield f'data: {{"status": "{response.content}"}}\n\n'
+            elif response.type == "error":
+                yield f'data: {{"error": "{response.content}"}}\n\n'
+        
+        yield 'data: [DONE]\n\n'
+
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream"
     )
-    if "error" in result:
-        raise HTTPException(status_code=500, detail=result["error"])
-    return JSONResponse(content=result)
 
 @app.post("/v1/files/decompress")
 async def decompress_zip(request: Request):

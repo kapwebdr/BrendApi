@@ -1,0 +1,17 @@
+{
+    "xtts_v2": {
+        "name": "XTTS v2",
+        "languages": ["fr", "en", "es", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn"],
+        "voices":
+            [
+                {
+                    "path": "morgan",
+                    "label":"Morgan Freeman"
+                },
+                {
+                    "path": "elise",
+                    "label":"Elise"
+                }
+            ]
+    }
+} 

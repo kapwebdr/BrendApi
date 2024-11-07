@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from Kapweb.session import SessionManager, UserSession
-from Kapweb.llm import get_prompt_template, load_models, loadLlm, format_prompt, brenda_system, generate_stream
+from Kapweb.llm import get_prompt_template, load_models, loadLlm, format_prompt, brenda_system, llm_generator
 from Kapweb.services import ServiceHelper
 from Kapweb.huggingface import download_model
 from typing import Optional
@@ -117,14 +117,30 @@ async def generate(request: Request, session: UserSession = Depends(get_session)
     )
     
     if data.get("stream", False):
+        async def stream_response():
+            try:
+                async for response in llm_generator.generate_stream(
+                    prompt=formatted_prompt,
+                    session=session,
+                    model_name=data["model"],
+                    models=available_models,
+                    format_type=data.get("format_type", "chunk")
+                ):
+                    if response.type == "text":
+                        if response.metadata:
+                            yield f'data: {{"text": "{response.content}", "pause": "{response.metadata["pause"]}"}}\n\n'
+                        else:
+                            yield f'data: {{"text": "{response.content}"}}\n\n'
+                    elif response.type == "status":
+                        yield f'data: {{"status": "{response.content}", "text": "{response.metadata["complete_text"]}"}}\n\n'
+                    elif response.type == "error":
+                        yield f'data: {{"error": "{response.content}"}}\n\n'
+                        
+            except Exception as e:
+                yield f'data: {{"error": "{str(e)}"}}\n\n'
+
         return StreamingResponse(
-            generate_stream(
-                prompt=formatted_prompt,
-                session=session,
-                model_name=data["model"],
-                models=available_models,
-                format_type=data.get("format_type", "chunk")
-            ),
+            stream_response(),
             media_type="text/event-stream",
             headers={"X-Session-ID": session.session_id}
         )
@@ -181,14 +197,9 @@ async def session_status(session: UserSession = Depends(get_session)):
 
 @app.post("/v1/ai/stop")
 async def stop_generation(session: UserSession = Depends(get_session)):
-    if not session.llm:
-        raise HTTPException(
-            status_code=400,
-            detail="Aucun modèle n'est chargé pour cette session"
-        )
-    
+    """Arrête la génération en cours"""
     try:
-        session.cleanup()
+        llm_generator.stop()
         return JSONResponse(
             content={"status": "stopped"},
             headers={"X-Session-ID": session.session_id}

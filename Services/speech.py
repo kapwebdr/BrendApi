@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.speech import speech_processor
+from Kapweb.speech import speech_processor, StreamResponse, SpeechCallbacks
 import base64
 import uuid
 import httpx
@@ -61,42 +61,62 @@ async def text_to_speech(request: Request):
 async def speech_to_text(request: Request):
     data = await request.json()
     if "audio" not in data:
-        raise HTTPException(status_code=400, detail="Audio requis pour la transcription")
+        raise HTTPException(status_code=400, detail="Audio requis")
     
     try:
+        request_id = str(uuid.uuid4())
         audio_data = base64.b64decode(
             data["audio"].split(',')[1] if ',' in data["audio"] else data["audio"]
         )
-        
-        request_id = str(uuid.uuid4())
+
+        # Stockage de la requête
         await service.store_data(
             key=f"stt_{request_id}",
             value={
-                "model_size": data.get("model_size", "large-v3"),
+                "model_size": data.get("model_size", "small"),
                 "timestamp": str(datetime.now())
             },
             collection="speech_requests"
         )
-        
-        await speech_processor.init_stt(data.get("model_size", "large-v3"))
-        
-        if data.get("stream", False):
-            return StreamingResponse(
-                speech_processor.speech_to_text_streaming(audio_data),
-                media_type="text/event-stream"
-            )
-        else:
-            result = await speech_processor.speech_to_text(audio_data)
-            # Store result
-            await service.store_data(
-                key=f"stt_result_{request_id}",
-                value=result,
-                collection="speech_results"
-            )
-            return JSONResponse(content=result)
+
+        async def stream_response():
+            async for response in speech_processor.speech_to_text(
+                audio_data=audio_data,
+                model_size=data.get("model_size", "small")
+            ):
+                if response.type == "text":
+                    yield f'data: {{"text": "{response.content}"}}\n\n'
+                elif response.type == "segment":
+                    yield f'data: {{"type": "segment", "text": "{response.content}", "start": {response.metadata["start"]}, "end": {response.metadata["end"]}}}\n\n'
+                elif response.type == "status":
+                    if response.content == "completed":
+                        yield f'data: {{"status": "completed", "text": "{response.metadata["text"]}"}}\n\n'
+                    else:
+                        yield f'data: {{"status": "{response.content}"}}\n\n'
+                elif response.type == "progress":
+                    yield f'data: {{"progress": {response.content}, "message": "{response.metadata["message"]}"}}\n\n'
+                elif response.type == "error":
+                    yield f'data: {{"error": "{response.content}"}}\n\n'
             
+        return StreamingResponse(
+            stream_response(),
+            media_type="text/event-stream"
+        )
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/ai/speech/stop")
+async def stop_processing():
+    """Arrête le traitement en cours"""
+    try:
+        speech_processor.stop()
+        return JSONResponse(content={"status": "stopped"})
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur lors de l'arrêt du traitement : {str(e)}"
+        )
 
 @app.get("/ready")
 async def ready():

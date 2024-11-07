@@ -10,6 +10,8 @@ import io
 import base64
 import asyncio
 from Kapweb.huggingface import download_model
+from typing import Callable, Optional, Dict, Any, AsyncGenerator
+from dataclasses import dataclass
 
 current_file = path.realpath(__file__)
 
@@ -17,6 +19,23 @@ def load_media_models(file_path):
     print(file_path)
     with open(file_path, 'r') as file:
         return json.load(file)
+
+@dataclass
+class StreamResponse:
+    type: str  # "text", "status", "error", "progress", "image"
+    content: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class MediaCallbacks:
+    def __init__(self,
+                 on_progress: Optional[Callable[[int, str], None]] = None,
+                 on_complete: Optional[Callable[[str], None]] = None,
+                 on_error: Optional[Callable[[Exception], None]] = None,
+                 should_stop: Optional[Callable[[], bool]] = None):
+        self.on_progress = on_progress
+        self.on_complete = on_complete
+        self.on_error = on_error
+        self.should_stop = should_stop or (lambda: False)
 
 class MediaGenerator:
     def __init__(self, cache_dir=None, models_config_path=None):
@@ -28,6 +47,7 @@ class MediaGenerator:
         self.current_model = None
         self.models_config_path = models_config_path or path.join(path.dirname(current_file),"..")
         self.model_cache_dir = path.join(self.cache_dir, "LlamaCppModel")
+        self._stop_event = asyncio.Event()
         
     def get_model_config(self, model_type):
         self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
@@ -87,16 +107,31 @@ class MediaGenerator:
             print(f"Erreur lors du chargement du modèle: {str(e)}")
             raise
 
-    async def generate_image(self, prompt, negative_prompt="", width=1024, height=1024, steps=20):
-        """Génère une image avec retour de progression"""
+    def stop(self):
+        """Arrête la génération en cours"""
+        if not self._stop_event.is_set():
+            self._stop_event.set()
+
+    def reset(self):
+        """Réinitialise le générateur"""
+        self._stop_event.clear()
+
+    async def generate_image(self, prompt, negative_prompt="", width=1024, height=1024, steps=20,
+                           callbacks: Optional[MediaCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
         try:
             if not self.pipe:
                 raise ValueError("Aucun modèle n'est chargé")
 
             # Génération avec progression
             for step in range(steps):
+                if self._stop_event.is_set() or (callbacks and callbacks.should_stop()):
+                    yield StreamResponse(type="status", content="stopped")
+                    return
+
                 progress = ((step + 1) / steps) * 100
-                yield f'data: {{"progress": {progress:.2f}}}\n\n'
+                if callbacks and callbacks.on_progress:
+                    callbacks.on_progress(progress, f"Étape {step + 1}/{steps}")
+                yield StreamResponse(type="progress", content=str(progress))
                 await asyncio.sleep(0.1)
 
             # Génération de l'image
@@ -114,10 +149,21 @@ class MediaGenerator:
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            yield f'data: {{"status": "completed" , "image": "{img_str}"}}\n\n'
+            if callbacks and callbacks.on_complete:
+                callbacks.on_complete(img_str)
+
+            yield StreamResponse(
+                type="status",
+                content="completed",
+                metadata={"image": img_str}
+            )
 
         except Exception as e:
-            yield f'data: {{"error": "Erreur lors de la génération : {str(e)}"}}\n\n'
+            if callbacks and callbacks.on_error:
+                callbacks.on_error(e)
+            yield StreamResponse(type="error", content=str(e))
+        finally:
+            self.reset()
 
     async def refine_image_data(self, image, prompt, negative_prompt="", strength=0.3, steps=20):
         """Raffine une image fournie en données avec le refiner"""

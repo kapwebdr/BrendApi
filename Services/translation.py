@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse,JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.trad import translator
+from Kapweb.trad import StreamResponse, TranslationCallbacks, translator
 from Kapweb.services import ServiceHelper
 import uuid
 from datetime import datetime
+import json
 
 app = FastAPI()
 app.add_middleware(
@@ -44,20 +45,28 @@ async def translate_text(request: Request):
             },
             collection="translation_requests"
         )
-        
-        await service.store_data(
-            key=f"translate_result_{request_id}",
-            value=f"test",
-            collection="translation_results"
-        )
-        return StreamingResponse(
-            translator.translate(
+
+        async def stream_response():
+            async for response in translator.translate(
                 text=data["text"],
                 from_lang=data["from_lang"],
                 to_lang=data["to_lang"]
-            ),
+            ):
+                if response.type == "status":
+                    if response.content == "completed":
+                        yield f'data: {{"status": "completed", "text": "{response.metadata["translated_text"]}", "from": "{response.metadata["from"]}", "to": "{response.metadata["to"]}", "model": "{response.metadata["model"]}"}}\n\n'
+                    else:
+                        yield f'data: {{"status": "{response.content}"}}\n\n'
+                elif response.type == "progress":
+                    yield f'data: {{"progress": {response.content}, "message": "{response.metadata["message"]}"}}\n\n'
+                elif response.type == "error":
+                    yield f'data: {{"error": "{response.content}"}}\n\n'
+            
+
+        return StreamingResponse(
+            stream_response(),
             media_type="text/event-stream"
-        )    
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
