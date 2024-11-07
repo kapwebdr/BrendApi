@@ -1,17 +1,75 @@
 {
     "xtts_v2": {
         "name": "XTTS v2",
+        "type": "multi_speaker",
         "languages": ["fr", "en", "es", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn"],
-        "voices":
-            [
-                {
-                    "path": "morgan",
-                    "label":"Morgan Freeman"
-                },
-                {
-                    "path": "elise",
-                    "label":"Elise"
+        "voices": [
+            {
+                "path": "morgan",
+                "label": "Morgan Freeman",
+                "language": "en"
+            },
+            {
+                "path": "elise",
+                "label": "Elise",
+                "language": "fr"
+            }
+        ],
+        "model_path": "tts_models/multilingual/multi-dataset/xtts_v2",
+        "requires_language": true,
+        "supports_streaming": true
+    },
+    "vits": {
+        "name": "VITS",
+        "type": "single_speaker",
+        "models": {
+            "fr": {
+                "path": "tts_models/fr/css10/vits",
+                "name": "French VITS",
+                "requires_language": false,
+                "supports_streaming": true
+            },
+            "en": {
+                "path": "tts_models/en/vctk/vits",
+                "name": "English VITS",
+                "requires_language": false,
+                "supports_streaming": true
+            }
+        }
+    },
+    "coqui": {
+        "name": "Coqui Base Models",
+        "type": "base_models",
+        "models": {
+            "tacotron2_ddc": {
+                "fr": {
+                    "path": "tts_models/fr/mai/tacotron2-DDC",
+                    "name": "Tacotron2 DDC French",
+                    "requires_language": false,
+                    "supports_streaming": true
                 }
-            ]
+            },
+            "fast_pitch": {
+                "en": {
+                    "path": "tts_models/en/ljspeech/fast_pitch",
+                    "name": "FastPitch English",
+                    "requires_language": false,
+                    "supports_streaming": true
+                }
+            }
+        }
+    },
+    "custom_models": {
+        "name": "Custom Voice Models",
+        "type": "custom",
+        "models_dir": "models/custom_tts",
+        "voices_dir": "voices/custom",
+        "requires_language": false,
+        "supports_streaming": true,
+        "format": {
+            "config_file": "config.json",
+            "model_file": "model.pth",
+            "speaker_file": "speaker.wav"
+        }
     }
 } 

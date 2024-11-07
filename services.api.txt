@@ -132,7 +132,21 @@ Corps :
 Endpoint : GET /v1/ai/speech/models
 Retour :
 {
-    "models": ["model1", "model2", ...]
+    "stt": {
+        "whisper": {
+            "name": "Faster Whisper",
+            "type": "transcription",
+            "models": {...}  // Configuration détaillée des modèles
+        }
+    },
+    "tts": {
+        "xtts_v2": {...},   // Configuration XTTS
+        "vits": {...},       // Configuration VITS
+        "bark": {...},       // Configuration Bark
+        "tortoise": {...},   // Configuration Tortoise
+        "coqui": {...},      // Configuration Coqui Base Models
+        "custom_models": {...} // Configuration Custom Models
+    }
 }
 
 4.2 Text-to-Speech
@@ -141,8 +155,10 @@ Endpoint : POST /v1/ai/speech/text-to-speech
 Corps :
 {
     "text": string,
-    "voice_path": string,
-    "language": string
+    "model_type": string,  // "xtts_v2", "vits", "bark", "tortoise", "coqui"
+    "voice": string,       // Dépend du model_type
+    "language": string,    // Requis pour certains modèles
+    "stream": boolean      // Optionnel, défaut true
 }
 
 4.3 Speech-to-Text
@@ -150,8 +166,38 @@ Corps :
 Endpoint : POST /v1/ai/speech/speech-to-text
 Corps :
 {
-    "audio": string,
-    "model_size": string
+    "audio": string,      // Audio en base64
+    "model_size": string  // "tiny", "base", "small", "medium", "large"
+}
+
+Retour : Stream d'événements SSE
+Format des événements :
+1. Pour le texte complet :
+{
+    "text": string
+}
+
+2. Pour les segments :
+{
+    "type": "segment",
+    "text": string,
+    "start": float,
+    "end": float,
+    "probability": float
+}
+
+3. Pour le statut :
+{
+    "status": "completed",
+    "text": string
+}
+
+4.4 Arrêt du Traitement
+---------------------
+Endpoint : POST /v1/ai/speech/stop
+Retour :
+{
+    "status": "stopped"
 }
 
 5. Service Media

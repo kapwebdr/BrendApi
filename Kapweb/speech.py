@@ -12,7 +12,7 @@ import json
 
 @dataclass
 class StreamResponse:
-    type: str  # "text", "audio", "status", "error", "progress"
+    type: str  # "text", "audio", "status", "error", "progress", "segment"
     content: str
     metadata: Optional[Dict[str, Any]] = None
 current_file = path.realpath(__file__)
@@ -30,21 +30,12 @@ class SpeechCallbacks:
         self.on_segment = on_segment
         self.should_stop = should_stop or (lambda: False)
 
-def load_models_config():
-    """Charge les configurations des modèles depuis les fichiers JSON"""
-    tts_config_path = '/app/Config/tts_models.json'
-    stt_config_path = '/app/Config/stt_models.json'
-    
-    with open(tts_config_path, 'r') as f:
-        tts_models = json.load(f)
-    with open(stt_config_path, 'r') as f:
-        stt_models = json.load(f)
-        
-    return tts_models, stt_models
-
 class SpeechProcessor:
     def __init__(self, cache_dir=None):
+        # Utilise le cache_dir fourni ou le chemin par défaut
         self.cache_dir = cache_dir or path.join(path.dirname(current_file), "..", "Cache")
+        print(f"Initialisation SpeechProcessor avec cache_dir: {self.cache_dir}")
+        
         self.stt_model = None
         self.tts_model = None
         self.current_model_size = None
@@ -53,7 +44,17 @@ class SpeechProcessor:
         self._stop_event = asyncio.Event()
         
         # Chargement des configurations
-        self.available_tts_models, self.available_stt_models = load_models_config()
+        self.load_models_config()
+
+    def load_models_config(self):
+        """Charge les configurations des modèles depuis les fichiers JSON"""
+        tts_config_path = '/app/Config/tts_models.json'
+        stt_config_path = '/app/Config/stt_models.json'
+        
+        with open(tts_config_path, 'r') as f:
+            self.tts_config = json.load(f)
+        with open(stt_config_path, 'r') as f:
+            self.stt_config = json.load(f)
 
     def stop(self):
         """Arrête le traitement en cours"""
@@ -66,44 +67,62 @@ class SpeechProcessor:
 
     def get_available_models(self):
         """Retourne la liste des modèles disponibles"""
-        stt_models = list(self.available_stt_models['whisper'].keys())  # ["tiny", "base", "small", "medium", "large"]
-        tts_models = self.available_tts_models
-        
         return {
-            "stt": stt_models,
-            "tts": tts_models
+            "stt": self.stt_config,
+            "tts": self.tts_config
         }
-
-    def get_voice_config(self, voice: str, language: str = "fr") -> Dict:
-        """Récupère la configuration d'une voix"""
-        if language in self.available_tts_models and voice in self.available_tts_models[language]:
-            return self.available_tts_models[voice] 
-        raise ValueError(f"Voix '{voice}' non disponible pour la langue '{language}'")
 
     async def init_stt(self, model_size: str = "small"):
         """Initialise le modèle STT"""
-        if model_size not in self.available_stt_models['whisper']:
+        if model_size not in self.stt_config["whisper"]["models"]:
             raise ValueError(f"Taille de modèle '{model_size}' non disponible")
             
+        model_config = self.stt_config["whisper"]["models"][model_size]
+        
         if self.stt_model is None or self.current_model_size != model_size:
+            whisper_cache = path.join(self.cache_dir, "WhisperCache")
+            print(f"Chargement du modèle Whisper depuis: {whisper_cache}")
+            
             self.stt_model = WhisperModel(
                 model_size_or_path=model_size,
                 device=self.device,
-                compute_type=self.compute_type,
-                download_root=path.join(self.cache_dir, "WhisperCache")
+                compute_type=model_config["compute_type"],
+                download_root=whisper_cache
             )
             self.current_model_size = model_size
 
-    async def init_tts(self, voice: str = "elise", language: str = "fr"):
+    async def init_tts(self, model_type: str = "xtts_v2", voice: str = None, language: str = None):
         """Initialise le modèle TTS"""
-        voice_config = self.get_voice_config(voice, language)
-        if self.tts_model is None:
-            self.tts_model = TTS(voice_config["model"]).to(self.device)
+        if model_type not in self.tts_config:
+            raise ValueError(f"Type de modèle '{model_type}' non disponible")
+            
+        model_config = self.tts_config[model_type]
+        
+        if model_config["requires_language"] and not language:
+            raise ValueError(f"Le modèle {model_type} nécessite une langue")
+            
+        if model_config["type"] == "multi_speaker" and not voice:
+            raise ValueError(f"Le modèle {model_type} nécessite une voix")
+        
+        # Configuration spécifique selon le type de modèle
+        if model_config["type"] == "multi_speaker":
+            voice_config = next((v for v in model_config["voices"] if v["path"] == voice), None)
+            if not voice_config:
+                raise ValueError(f"Voix '{voice}' non disponible")
+            
+            tts_cache = path.join(self.cache_dir, "TTSCache")
+            print(f"Chargement du modèle TTS depuis: {tts_cache}")
+            self.tts_model = TTS(
+                model_config["model_path"],
+                progress_bar=True,
+                # cache_dir=tts_cache
+            ).to(self.device)
 
     async def speech_to_text(self, audio_data: bytes, model_size: str = "small",
                             callbacks: Optional[SpeechCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
         try:
             await self.init_stt(model_size)
+            model_config = self.stt_config["whisper"]["models"][model_size]
             
             if callbacks and callbacks.on_progress:
                 callbacks.on_progress(0, "Démarrage de la transcription...")
@@ -124,9 +143,9 @@ class SpeechProcessor:
             # Transcription avec faster-whisper
             segments_iterator, info = self.stt_model.transcribe(
                 temp_buffer,
-                beam_size=5,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                beam_size=model_config["beam_size"],
+                vad_filter=model_config["vad_filter"],
+                vad_parameters=model_config["vad_parameters"]
             )
             
             full_text = ""
@@ -138,7 +157,6 @@ class SpeechProcessor:
                 segment_text = segment.text.strip()
                 full_text += segment_text + " "
                 
-                # Envoi du segment
                 if callbacks and callbacks.on_segment:
                     callbacks.on_segment(segment_text)
                 yield StreamResponse(
@@ -163,10 +181,12 @@ class SpeechProcessor:
         finally:
             self.reset()
 
-    async def text_to_speech(self, text: str, voice: str = "elise", language: str = "fr",
+    async def text_to_speech(self, text: str, model_type: str = "xtts_v2", voice: str = "elise", 
+                            language: str = "fr", stream: bool = True,
                             callbacks: Optional[SpeechCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
         try:
-            await self.init_tts(voice, language)
+            await self.init_tts(model_type, voice, language)
+            model_config = self.tts_config[model_type]
             
             if callbacks and callbacks.on_progress:
                 callbacks.on_progress(0, "Démarrage de la synthèse...")
@@ -176,13 +196,32 @@ class SpeechProcessor:
                 yield StreamResponse(type="status", content="stopped")
                 return
 
-            wav = self.tts_model.tts(text=text)
+            total_steps = len(text.split())
+            for step in range(total_steps):
+                progress = ((step + 1) / total_steps) * 100
+                if stream:
+                    yield StreamResponse(type="progress", content=progress, metadata={"message": "Synthèse en cours..."})
+                    await asyncio.sleep(0.1)
+            
+            # Génération audio selon le type de modèle
+            if model_config["type"] == "multi_speaker":
+                base_voice_path = path.join(path.dirname(current_file), "voices")
+                if voice:
+                    voice_path = path.join(base_voice_path, voice+".wav")
+                wav = self.tts_model.tts(text=text, speaker_wav=voice_path, language=language)
+            else:
+                wav = self.tts_model.tts(text=text)
+
+            # Conversion du numpy array en bytes
+            wav_bytes = io.BytesIO()
+            sf.write(wav_bytes, wav, self.tts_model.synthesizer.output_sample_rate, format='WAV')
+            wav_bytes = wav_bytes.getvalue()
 
             if callbacks and callbacks.on_complete:
-                callbacks.on_complete(wav)
+                callbacks.on_complete(wav_bytes)
 
-            yield StreamResponse(type="audio", content=wav)
-            yield StreamResponse(type="status", content="completed", metadata={"audio": wav})
+            yield StreamResponse(type="audio", content=wav_bytes)
+            yield StreamResponse(type="status", content="completed", metadata={"audio": wav_bytes})
 
         except Exception as e:
             if callbacks and callbacks.on_error:

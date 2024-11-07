@@ -2,12 +2,15 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from Kapweb.services import ServiceHelper
-import httpx
+from Kapweb.llm import LLMCallbacks, llm_generator, format_chunk
+from Kapweb.speech import SpeechCallbacks, speech_processor
 import base64
 import json
 import uuid
 from datetime import datetime
 import asyncio
+import io
+import soundfile as sf
 
 app = FastAPI()
 app.add_middleware(
@@ -21,60 +24,42 @@ app.add_middleware(
 
 service = ServiceHelper("chaining")
 
-async def transcribe_audio(audio_data: str, model_size: str = "small"):
-    """Transcrit l'audio en texte via le service speech"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://speech:8000/v1/ai/speech/speech-to-text",
-            json={
-                "audio": audio_data,
-                "model_size": model_size
-            }
+async def process_tts(text: str):
+    """Fonction auxiliaire pour traiter la synthèse vocale"""
+    async for tts_response in speech_processor.text_to_speech(
+        text=text.strip(),
+        model_type="xtts_v2",
+        voice="elise",
+        language="fr",
+        callbacks=SpeechCallbacks(
+            on_complete=lambda audio: print(f"Audio généré pour: {text}")
         )
-        return response.json()
-
-async def generate_llm_response(text: str):
-    """Génère une réponse LLM en streaming"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://llm:8000/v1/ai/generate",
-            json={
-                "model": "Llama-3.2-3B-Instruct",  # modèle par défaut
-                "messages": [{"role": "user", "content": text}],
-                "stream": True,
-                "format_type": "speech"  # utilise le format optimisé pour la synthèse vocale
-            },
-            timeout=None
-        )
-        async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                yield line
-            await asyncio.sleep(0)  
-
-async def text_to_speech(text: str, voice: str = "elise", language: str = "fr"):
-    """Convertit le texte en audio via le service speech"""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://speech:8000/v1/ai/speech/text-to-speech",
-            json={
-                "text": text,
-                "voice": voice,
-                "language": language,
-                "stream": False
-            },
-            timeout=None
-        )
-        audio_data = await response.aread()  
-        # {"status": "completed", "audio": # Lit tout le contenu de la réponse
-        return audio_data
+    ):
+        if tts_response.type == "audio":
+            return tts_response.content
+    return None
 
 async def conversation_stream(text_input: str = None, audio_input: str = None):
     """Gère le flux de conversation complet"""
     try:
         # Si audio fourni, transcription
         if audio_input:
-            transcription = await transcribe_audio(audio_input)
-            text_input = transcription["text"]
+            audio_data = base64.b64decode(
+                audio_input.split(',')[1] if ',' in audio_input else audio_input
+            )
+            
+            text_buffer = ""
+            async for response in speech_processor.speech_to_text(
+                audio_data=audio_data,
+                model_size="small",
+                callbacks=SpeechCallbacks(
+                    on_segment=lambda segment: print(f"Segment transcrit: {segment}"),
+                    on_complete=lambda text: print(f"Transcription terminée: {text}")
+                )
+            ):
+                if response.type == "text":
+                    text_buffer = response.content
+                    text_input = text_buffer
 
         # Stockage de l'entrée
         request_id = str(uuid.uuid4())
@@ -88,30 +73,58 @@ async def conversation_stream(text_input: str = None, audio_input: str = None):
             collection="conversation_history"
         )
 
-        # Génération de la réponse LLM
-        buffer = ""
-        async for line in generate_llm_response(text_input):
-            if line.startswith("data: "):
-                line = line[6:]
-                if line != '[DONE]':
-                    data = json.loads(line)
-                    if isinstance(data, dict) and "text" in data:
-                        buffer += data["text"]
-                        if isinstance(data, dict) and "pause" in data and data["pause"] in ["long", "short"]:
-                            if buffer.strip():
-                                yield f'data: {{"type": "text", "content": {json.dumps(buffer)}}}\n\n'
-                                audio_data = await text_to_speech(buffer.strip())
-                                audio_data = audio_data[6:]
-                                yield f'data: {{"type": "audio", "content": "{audio_data}"}}\n\n'
-                                buffer = ""
+        # Buffer pour accumuler le texte pour la synthèse vocale
+        text_for_tts = ""
+        tts_task = None
 
-        # Traite le reste du buffer
-        if buffer.strip():
-            print('ICI :: ',buffer.strip())
-            yield f'data: {{"type": "text", "content": {json.dumps(buffer)}}}\n\n'
-            audio_data = await text_to_speech(buffer.strip())
-            audio_data = audio_data[6:]
-            yield f'data: {{"type": "audio", "content": "{audio_data}"}}\n\n'
+        async for llm_response in llm_generator.generate_stream(
+            prompt=text_input,
+            session=None,
+            model_name="Llama-3.2-3B-Instruct",
+            format_type="speech",
+            callbacks=LLMCallbacks(
+                on_chunk=lambda chunk, meta: print(f"Chunk généré: {chunk}", meta),
+                on_complete=lambda text: print(f"Génération terminée: {text}")
+            )
+        ):
+            if llm_response.type == "text":
+                text_for_tts += llm_response.content
+                # Envoie immédiatement le texte
+                yield f'data: {{"type": "text", "content": "{format_chunk(llm_response.content)}"}}\n\n'
+
+                # Si on a une pause, lance la génération audio en parallèle
+                if llm_response.metadata and "pause" in llm_response.metadata:
+                    if llm_response.metadata["pause"] in ["long", "short"]:
+                        # Si une tâche TTS est en cours, attend sa fin
+                        if tts_task and not tts_task.done():
+                            try:
+                                audio_content = await tts_task
+                                if audio_content:
+                                    yield f'data: {{"type": "audio", "content": "{audio_content}"}}\n\n'
+                            except Exception as e:
+                                print(f"Erreur TTS: {e}")
+
+                        # Lance une nouvelle tâche TTS
+                        text_to_process = text_for_tts.strip()
+                        if text_to_process:
+                            tts_task = asyncio.create_task(process_tts(text_to_process))
+                            text_for_tts = ""
+
+        # Traite le dernier morceau de texte s'il en reste
+        if text_for_tts.strip():
+            # Attend la fin de la tâche précédente si elle existe
+            if tts_task and not tts_task.done():
+                try:
+                    audio_content = await tts_task
+                    if audio_content:
+                        yield f'data: {{"type": "audio", "content": "{audio_content}"}}\n\n'
+                except Exception as e:
+                    print(f"Erreur TTS finale: {e}")
+
+            # Traite le dernier morceau
+            audio_content = await process_tts(text_for_tts.strip())
+            if audio_content:
+                yield f'data: {{"type": "audio", "content": "{audio_content}"}}\n\n'
 
         yield 'data: [DONE]\n\n'
 
@@ -161,4 +174,4 @@ async def ready():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

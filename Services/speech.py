@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from Kapweb.speech import speech_processor, StreamResponse, SpeechCallbacks
+from Kapweb.speech import speech_processor, StreamResponse, SpeechCallbacks, SpeechProcessor
 import base64
 import uuid
 import httpx
@@ -9,6 +9,7 @@ from datetime import datetime
 from Kapweb.services import ServiceHelper
 import soundfile
 import torch
+import json
 
 app = FastAPI()
 app.add_middleware(
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 service = ServiceHelper("speech")
+speech_processor = SpeechProcessor(cache_dir="/app/Cache")
 
 @app.post("/v1/ai/speech/models")
 async def list_models():
@@ -34,24 +36,59 @@ async def text_to_speech(request: Request):
     
     try:
         request_id = str(uuid.uuid4())
+        
+        # Validation des paramètres selon le type de modèle
+        model_type = data.get("model_type", "xtts_v2")
+        model_config = speech_processor.tts_config.get(model_type)
+        
+        if not model_config:
+            raise HTTPException(status_code=400, detail=f"Type de modèle '{model_type}' non disponible")
+        
+        if model_config["requires_language"] and "language" not in data:
+            raise HTTPException(status_code=400, detail=f"Le modèle {model_type} nécessite une langue")
+            
+        if model_config["type"] == "multi_speaker" and "voice" not in data:
+            raise HTTPException(status_code=400, detail=f"Le modèle {model_type} nécessite une voix")
+
+        # Stockage de la requête
         await service.store_data(
             key=f"tts_{request_id}",
             value={
                 "text": data["text"],
-                "language": data.get("language", "fr"),
+                "model_type": model_type,
+                "voice": data.get("voice"),
+                "language": data.get("language"),
                 "timestamp": str(datetime.now())
             },
             collection="speech_requests"
         )
-        
-        await speech_processor.init_tts()
-        return StreamingResponse(
-            speech_processor.text_to_speech(
+
+        async def stream_response():
+            async for response in speech_processor.text_to_speech(
                 text=data["text"],
+                model_type=model_type,
                 voice=data.get("voice"),
-                language=data.get("language", "fr"),
+                language=data.get("language"),
                 stream=data.get("stream", True)
-            ),
+            ):
+                if response.type == "audio":
+                    # Encode l'audio en base64
+                    audio_base64 = base64.b64encode(response.content).decode()
+                    yield f'data: {{"audio": "{audio_base64}"}}\n\n'
+                elif response.type == "status":
+                    if response.content == "completed":
+                        # Encode l'audio en base64 pour le completed aussi
+                        audio_base64 = base64.b64encode(response.metadata["audio"]).decode()
+                        yield f'data: {{"status": "completed", "audio": "{audio_base64}"}}\n\n'
+                    else:
+                        yield f'data: {{"status": "{response.content}"}}\n\n'
+                elif response.type == "progress":
+                    yield f'data: {{"progress": {response.content}, "message": "{response.metadata["message"]}"}}\n\n'
+                elif response.type == "error":
+                    yield f'data: {{"error": "{response.content}"}}\n\n'
+
+        return StreamingResponse(
+            stream_response(),
             media_type="text/event-stream"
         )
     except Exception as e:
@@ -69,11 +106,16 @@ async def speech_to_text(request: Request):
             data["audio"].split(',')[1] if ',' in data["audio"] else data["audio"]
         )
 
+        # Validation du modèle STT
+        model_size = data.get("model_size", "small")
+        if model_size not in speech_processor.stt_config["whisper"]["models"]:
+            raise HTTPException(status_code=400, detail=f"Taille de modèle '{model_size}' non disponible")
+
         # Stockage de la requête
         await service.store_data(
             key=f"stt_{request_id}",
             value={
-                "model_size": data.get("model_size", "small"),
+                "model_size": model_size,
                 "timestamp": str(datetime.now())
             },
             collection="speech_requests"
@@ -82,7 +124,7 @@ async def speech_to_text(request: Request):
         async def stream_response():
             async for response in speech_processor.speech_to_text(
                 audio_data=audio_data,
-                model_size=data.get("model_size", "small")
+                model_size=model_size
             ):
                 if response.type == "text":
                     yield f'data: {{"text": "{response.content}"}}\n\n'
@@ -97,7 +139,7 @@ async def speech_to_text(request: Request):
                     yield f'data: {{"progress": {response.content}, "message": "{response.metadata["message"]}"}}\n\n'
                 elif response.type == "error":
                     yield f'data: {{"error": "{response.content}"}}\n\n'
-            
+
         return StreamingResponse(
             stream_response(),
             media_type="text/event-stream"

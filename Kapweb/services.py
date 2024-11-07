@@ -29,9 +29,10 @@ class ServiceHelper:
     async def check_storage_ready(self) -> bool:
         """Check if storage service is ready"""
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(f"{storage_host}/ready", timeout=2.0)
-                return response.status_code == 200
+            # async with httpx.AsyncClient() as client:
+            #     response = await client.get(f"{storage_host}/ready", timeout=2.0)
+            #     return response.status_code == 200
+            return False
         except:
             return False
 

@@ -1,83 +1,92 @@
 {
     "whisper": {
-        "tiny": {
-            "name": "Tiny",
-            "description": "Très rapide, précision limitée",
-            "size": "39M",
-            "compute_type": "int8",
-            "beam_size": 4,
-            "language": "fr",
-            "vad_parameters": {
-                "min_silence_duration_ms": 500
+        "name": "Faster Whisper",
+        "type": "transcription",
+        "models": {
+            "tiny": {
+                "name": "Tiny",
+                "description": "Très rapide, précision limitée",
+                "size": "39M",
+                "compute_type": "int8",
+                "beam_size": 4,
+                "language": "fr",
+                "vad_filter": true,
+                "vad_parameters": {
+                    "min_silence_duration_ms": 500
+                },
+                "performance": {
+                    "speed": "very_fast",
+                    "accuracy": "low",
+                    "memory": "minimal"
+                }
             },
-            "performance": {
-                "speed": "very_fast",
-                "accuracy": "low",
-                "memory": "minimal"
-            }
-        },
-        "base": {
-            "name": "Base",
-            "description": "Rapide, bonne précision",
-            "size": "74M",
-            "compute_type": "int8",
-            "beam_size": 4,
-            "language": "fr",
-            "vad_parameters": {
-                "min_silence_duration_ms": 500
+            "base": {
+                "name": "Base",
+                "description": "Rapide, bonne précision",
+                "size": "74M",
+                "compute_type": "int8",
+                "beam_size": 4,
+                "language": "fr",
+                "vad_filter": true,
+                "vad_parameters": {
+                    "min_silence_duration_ms": 500
+                },
+                "performance": {
+                    "speed": "fast",
+                    "accuracy": "medium",
+                    "memory": "low"
+                }
             },
-            "performance": {
-                "speed": "fast",
-                "accuracy": "medium",
-                "memory": "low"
-            }
-        },
-        "small": {
-            "name": "Small",
-            "description": "Équilibré (recommandé)",
-            "size": "244M",
-            "compute_type": "float16",
-            "beam_size": 5,
-            "language": "fr",
-            "vad_parameters": {
-                "min_silence_duration_ms": 500
+            "small": {
+                "name": "Small",
+                "description": "Équilibré (recommandé)",
+                "size": "244M",
+                "compute_type": "float16",
+                "beam_size": 5,
+                "language": "fr",
+                "vad_filter": true,
+                "vad_parameters": {
+                    "min_silence_duration_ms": 500
+                },
+                "performance": {
+                    "speed": "medium",
+                    "accuracy": "good",
+                    "memory": "medium"
+                }
             },
-            "performance": {
-                "speed": "medium",
-                "accuracy": "good",
-                "memory": "medium"
-            }
-        },
-        "medium": {
-            "name": "Medium",
-            "description": "Haute précision",
-            "size": "769M",
-            "compute_type": "float16",
-            "beam_size": 5,
-            "language": "fr",
-            "vad_parameters": {
-                "min_silence_duration_ms": 500
+            "medium": {
+                "name": "Medium",
+                "description": "Haute précision",
+                "size": "769M",
+                "compute_type": "float16",
+                "beam_size": 5,
+                "language": "fr",
+                "vad_filter": true,
+                "vad_parameters": {
+                    "min_silence_duration_ms": 500
+                },
+                "performance": {
+                    "speed": "slow",
+                    "accuracy": "high",
+                    "memory": "high"
+                }
             },
-            "performance": {
-                "speed": "slow",
-                "accuracy": "high",
-                "memory": "high"
-            }
-        },
-        "large": {
-            "name": "Large",
-            "description": "Meilleure précision",
-            "size": "1.5G",
-            "compute_type": "float16",
-            "beam_size": 5,
-            "language": "fr",
-            "vad_parameters": {
-                "min_silence_duration_ms": 500
-            },
-            "performance": {
-                "speed": "very_slow",
-                "accuracy": "very_high",
-                "memory": "very_high"
+            "large": {
+                "name": "Large",
+                "description": "Meilleure précision",
+                "size": "1.5G",
+                "compute_type": "float16",
+                "beam_size": 5,
+                "language": "fr",
+                "vad_filter": true,
+                "vad_parameters": {
+                    "min_silence_duration_ms": 500
+                },
+                "performance": {
+                    "speed": "very_slow",
+                    "accuracy": "very_high",
+                    "memory": "very_high"
+                }
             }
         }
     }

@@ -6,3 +6,9 @@ torch
 soundfile
 httpx
 aiohttp
+pydantic
+numpy
+torchaudio
+transformers
+# bark-ml
+# tortoise-tts
