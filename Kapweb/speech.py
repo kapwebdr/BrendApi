@@ -103,7 +103,7 @@ class SpeechProcessor:
             if stream:
                 yield f'data: {{"error": "Erreur lors de la synthèse vocale : {str(e)}"}}\n\n'
             else:
-                yield f'data: [DONE]'
+                yield f'data: {{"status": "completed"}}\n\n'
 
     async def speech_to_text(self, audio_data):
         """Convertit l'audio en texte"""

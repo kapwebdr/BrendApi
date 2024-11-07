@@ -26,7 +26,7 @@ def load_models(file_path):
         data = json.load(file)
         return data
 
-brenda_llm_config = {"max_new_tokens":2048,"context_length":2048,"temperature":0.5,"stream":True}
+
 brenda_system = "Tu es Brenda, mon assistante, secrétaire personnelle."
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 
@@ -41,8 +41,6 @@ def get_prompt_template(template_name: str,_template_path :str=None) -> any:
 
 def format_prompt(messages, system_message, prompt_template=None):
     # Construction de l'historique et du prompt
-    history = []
-    current_prompt = ""
     prompt = prompt_template['pre_prompt'];
     prompt += prompt_template['system_prompt'].format(system=system_message);
 
@@ -60,19 +58,24 @@ def loadLlm(model):
                           model['model_name'].replace('/', path.sep), model['model_file'])
     if not path.exists(model_path):
         return None
-
-    n_gpu_layers = 1
-    n_batch = 4096
+    
+    # n_gpu_layers = 1
     llm = LlamaCpp(
         model_path=model_path,
-        n_gpu_layers=n_gpu_layers,
-        n_batch=n_batch,
-        n_ctx=n_batch,
-        f16_kv=True,
-        config=brenda_llm_config,
         callback_manager=callback_manager,
+        max_new_tokens= 16384,        # Augmenté de 2048 à 8192
+        max_tokens=16384,
+        context_length= 16384,        # Augmenté de 2048 à 16384
+        temperature= 0.7,
+        stream= True,
+        n_ctx= 4096,                  # Contexte maximal
+        n_batch= 4096, 
+        n_gpu_layers=1, 
+        top_p= 0.9,                   
+        repeat_penalty= 1.1,
+        f16_kv=True,
         streaming=True,
-        #verbose=True,
+        use_mlock=True,
     )
     
     return llm
@@ -87,20 +90,17 @@ async def generate_stream(prompt, session: UserSession, model_name=None, models=
         model_name: Le nom du modèle à utiliser
         models: La configuration des modèles
         format_type: Le type de formatage ("chunk", "line", "encoded", "speech")
-            - "chunk": Envoie les chunks bruts
-            - "line": Envoie ligne par ligne
-            - "encoded": Envoie les chunks avec les retours à la ligne encodés (\n)
-            - "speech": Découpe intelligent pour la synthèse vocale
     """
-    # print(f"Format type: {format_type}")
     try:
         llm = loadLlm(models[model_name])
         print(f"Prompt: {prompt}")
+        complete_message = ""  # Pour stocker le message complet
         
         if format_type == "speech":
             buffer = ""
             for chunk in llm.stream(prompt):
                 if chunk:
+                    complete_message += chunk  # Accumule le message complet
                     buffer += chunk
                     matches = list(re.finditer(PUNCTUATION_PATTERN, buffer))
                     if matches:
@@ -121,6 +121,7 @@ async def generate_stream(prompt, session: UserSession, model_name=None, models=
             buffer = ""
             for chunk in llm.stream(prompt):
                 if chunk:
+                    complete_message += chunk  # Accumule le message complet
                     buffer += chunk
                     while '\n' in buffer:
                         line, buffer = buffer.split('\n', 1)
@@ -133,14 +134,17 @@ async def generate_stream(prompt, session: UserSession, model_name=None, models=
         elif format_type == "encoded":
             for chunk in llm.stream(prompt):
                 if chunk:
+                    complete_message += chunk  # Accumule le message complet
                     yield f'data: {{"text": "{format_chunk(chunk)}"}}\n\n'
                     
         else:  # format_type == "chunk" (défaut)
             for chunk in llm.stream(prompt):
                 if chunk:
+                    complete_message += chunk  # Accumule le message complet
                     yield f'data: {{"text": "{format_chunk(chunk)}"}}\n\n'
         
-        yield 'data: [DONE]\n\n'
+        # Envoie le status completed avec le message complet
+        yield f'data: {{"status": "completed", "text": "{format_chunk(complete_message.strip())}"}}\n\n'
     except Exception as e:
         print(f"Erreur pendant le streaming: {str(e)}")
         try:

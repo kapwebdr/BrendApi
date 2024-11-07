@@ -1,13 +1,13 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional, Any, Dict, List
-import redis
-import json
+from Kapweb.storage import StorageManager
+from Kapweb.history import HistoryManager
+from Kapweb.services import ServiceHelper
+from Kapweb.session import SessionManager, UserSession
 import os
-import chromadb
-from chromadb.config import Settings
-from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+import uuid
+from typing import Optional
 
 app = FastAPI()
 app.add_middleware(
@@ -19,229 +19,196 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# Configuration des backends de stockage
-STORAGE_BACKEND = os.getenv('STORAGE_BACKEND', 'redis')  # 'redis', 'mongo', 'chroma'
-
-# Redis configuration
-redis_client = redis.Redis(
-    host=os.getenv('REDIS_HOST', 'localhost'),
-    port=int(os.getenv('REDIS_PORT', 6379)),
-    decode_responses=True
+service = ServiceHelper("storage")
+session_manager = SessionManager()
+storage = StorageManager(
+    backend=os.getenv('STORAGE_BACKEND', 'redis'),
+    redis_host=os.getenv('REDIS_HOST', 'localhost'),
+    redis_port=os.getenv('REDIS_PORT', 6379)
 )
-
-# MongoDB configuration
-mongo_client = AsyncIOMotorClient(os.getenv('MONGO_URL', 'mongodb://localhost:27017'))
-mongo_db = mongo_client[os.getenv('MONGO_DB', 'brenda')]
-
-# ChromaDB configuration
-chroma_client = chromadb.PersistentClient(
-    path=os.getenv('CHROMA_PERSIST_DIR', './chroma_storage'),
-    settings=Settings(
-        allow_reset=True,
-        anonymized_telemetry=False
-    )
+history_storage = StorageManager(
+    backend='mongo',  # Force MongoDB pour l'historique
+    mongo_url=os.getenv('MONGO_URL', 'mongodb://localhost:27017'),
+    mongo_db=os.getenv('MONGO_DB', 'default')
 )
+history = HistoryManager(storage_manager=history_storage)
 
-class StorageService:
-    def __init__(self, backend=STORAGE_BACKEND):
-        self.backend = backend
-        
-    async def set(self, key: str, value: Any, collection: str = "default", metadata: Dict = None) -> bool:
-        try:
-            if self.backend == "redis":
-                return await self._redis_set(key, value, collection)
-            elif self.backend == "mongo":
-                return await self._mongo_set(key, value, collection, metadata)
-            elif self.backend == "chroma":
-                return await self._chroma_set(key, value, collection, metadata)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur de stockage: {str(e)}")
-
-    async def get(self, key: str, collection: str = "default") -> Any:
-        try:
-            if self.backend == "redis":
-                return await self._redis_get(key, collection)
-            elif self.backend == "mongo":
-                return await self._mongo_get(key, collection)
-            elif self.backend == "chroma":
-                return await self._chroma_get(key, collection)
-        except Exception as e:
-            raise HTTPException(status_code=404, detail=f"Clé non trouvée: {str(e)}")
-
-    async def delete(self, key: str, collection: str = "default") -> bool:
-        try:
-            if self.backend == "redis":
-                return await self._redis_delete(key, collection)
-            elif self.backend == "mongo":
-                return await self._mongo_delete(key, collection)
-            elif self.backend == "chroma":
-                return await self._chroma_delete(key, collection)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur de suppression: {str(e)}")
-
-    async def list(self, collection: str = "default", pattern: str = "*") -> List[str]:
-        try:
-            if self.backend == "redis":
-                return await self._redis_list(collection, pattern)
-            elif self.backend == "mongo":
-                return await self._mongo_list(collection, pattern)
-            elif self.backend == "chroma":
-                return await self._chroma_list(collection, pattern)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur de listage: {str(e)}")
-
-    # Implémentations Redis
-    async def _redis_set(self, key: str, value: Any, collection: str) -> bool:
-        full_key = f"{collection}:{key}"
-        return redis_client.set(full_key, json.dumps(value))
-
-    async def _redis_get(self, key: str, collection: str) -> Any:
-        full_key = f"{collection}:{key}"
-        value = redis_client.get(full_key)
-        if value is None:
-            raise KeyError(f"Clé {key} non trouvée dans {collection}")
-        return json.loads(value)
-
-    async def _redis_delete(self, key: str, collection: str) -> bool:
-        full_key = f"{collection}:{key}"
-        return redis_client.delete(full_key) > 0
-
-    async def _redis_list(self, collection: str, pattern: str) -> List[str]:
-        full_pattern = f"{collection}:{pattern}"
-        keys = redis_client.keys(full_pattern)
-        return [k.split(':', 1)[1] for k in keys]
-
-    # Implémentations MongoDB
-    async def _mongo_set(self, key: str, value: Any, collection: str, metadata: Dict = None) -> bool:
-        doc = {
-            "_id": key,
-            "value": value,
-            "metadata": metadata or {},
-            "updated_at": datetime.utcnow()
-        }
-        result = await mongo_db[collection].replace_one(
-            {"_id": key}, doc, upsert=True
-        )
-        return result.acknowledged
-
-    async def _mongo_get(self, key: str, collection: str) -> Any:
-        doc = await mongo_db[collection].find_one({"_id": key})
-        if doc is None:
-            raise KeyError(f"Clé {key} non trouvée dans {collection}")
-        return doc["value"]
-
-    async def _mongo_delete(self, key: str, collection: str) -> bool:
-        result = await mongo_db[collection].delete_one({"_id": key})
-        return result.deleted_count > 0
-
-    async def _mongo_list(self, collection: str, pattern: str) -> List[str]:
-        cursor = mongo_db[collection].find(
-            {"_id": {"$regex": pattern.replace("*", ".*")}}
-        )
-        return [doc["_id"] async for doc in cursor]
-
-    # Implémentations ChromaDB
-    async def _chroma_set(self, key: str, value: Any, collection: str, metadata: Dict = None) -> bool:
-        try:
-            chroma_collection = chroma_client.get_or_create_collection(name=collection)
-            # Convertit la valeur en chaîne pour le stockage
-            value_str = json.dumps(value)
-            # Ajoute ou met à jour le document
-            chroma_collection.upsert(
-                ids=[key],
-                documents=[value_str],
-                metadatas=[metadata or {}]
-            )
-            return True
-        except Exception as e:
-            print(f"Erreur ChromaDB set: {str(e)}")
-            return False
-
-    async def _chroma_get(self, key: str, collection: str) -> Any:
-        try:
-            chroma_collection = chroma_client.get_or_create_collection(name=collection)
-            result = chroma_collection.get(
-                ids=[key],
-                include=['documents']
-            )
-            if not result['documents']:
-                raise KeyError(f"Clé {key} non trouvée dans {collection}")
-            # Parse la chaîne JSON stockée
-            return json.loads(result['documents'][0])
-        except Exception as e:
-            print(f"Erreur ChromaDB get: {str(e)}")
-            raise
-
-    async def _chroma_delete(self, key: str, collection: str) -> bool:
-        try:
-            chroma_collection = chroma_client.get_or_create_collection(name=collection)
-            chroma_collection.delete(ids=[key])
-            return True
-        except Exception as e:
-            print(f"Erreur ChromaDB delete: {str(e)}")
-            return False
-
-    async def _chroma_list(self, collection: str, pattern: str) -> List[str]:
-        try:
-            chroma_collection = chroma_client.get_or_create_collection(name=collection)
-            # Récupère tous les IDs de la collection
-            result = chroma_collection.get(include=['ids'])
-            return result['ids']
-        except Exception as e:
-            print(f"Erreur ChromaDB list: {str(e)}")
-            return []
-
-storage_service = StorageService()
+async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession:
+    if not x_session_id:
+        x_session_id = str(uuid.uuid4())
+        session = session_manager.create_session(x_session_id)
+    else:
+        session = session_manager.get_session(x_session_id)
+        if not session:
+            session = session_manager.create_session(x_session_id)
+    return session
 
 @app.post("/v1/storage/set")
-async def set_value(request: Request):
+async def store_data(request: Request):
     data = await request.json()
     if not all(k in data for k in ["key", "value"]):
-        raise HTTPException(status_code=400, detail="key et value requis")
+        raise HTTPException(status_code=400, detail="Key et value requis")
     
-    collection = data.get("collection", "default")
-    metadata = data.get("metadata", None)
-    
-    success = await storage_service.set(
-        data["key"], 
-        data["value"], 
-        collection,
-        metadata
+    result = await storage.store_data(
+        key=data["key"],
+        value=data["value"],
+        collection=data.get("collection", "default")
     )
-    return {"success": success}
+    
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
 
 @app.get("/v1/storage/get/{collection}/{key}")
-async def get_value(collection: str, key: str):
-    try:
-        value = await storage_service.get(key, collection)
-        return {"value": value}
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+async def get_data(collection: str, key: str):
+    result = await storage.get_data(key, collection)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Données non trouvées")
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
 
 @app.delete("/v1/storage/delete/{collection}/{key}")
-async def delete_value(collection: str, key: str):
-    success = await storage_service.delete(key, collection)
-    return {"success": success}
+async def delete_data(collection: str, key: str):
+    result = await storage.delete_data(key, collection)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
 
 @app.get("/v1/storage/list/{collection}")
-async def list_keys(collection: str, pattern: str = "*"):
-    keys = await storage_service.list(collection, pattern)
-    return {"keys": keys}
+async def list_data(collection: str, pattern: str = "*"):
+    result = await storage.list_data(collection, pattern)
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+@app.post("/v1/storage/search")
+async def search_data(request: Request):
+    data = await request.json()
+    if "query" not in data:
+        raise HTTPException(status_code=400, detail="Query requise")
+    
+    result = await storage.search_data(
+        query=data["query"],
+        collection=data.get("collection", "default"),
+        n_results=data.get("n_results", 10)
+    )
+    
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+@app.get("/v1/history/conversation/{id}")
+async def get_conversation(id: str, session: UserSession = Depends(get_session)):
+    """Récupère une conversation complète avec tous ses messages"""
+    result = await history.get_conversation(id)
+    
+    # Vérification que la conversation appartient à la session
+    if isinstance(result, dict):
+        if result.get("status") == "error":
+            raise HTTPException(status_code=404, detail=result["message"])
+        if result.get("session_id") != session.session_id:
+            raise HTTPException(status_code=403, detail="Non autorisé à accéder à cette conversation")
+    
+    return JSONResponse(
+        content={
+            "id": result["id"],
+            "title": result["title"],
+            "created_at": result["created_at"],
+            "messages": result["messages"]
+        },
+        headers={"X-Session-ID": session.session_id}
+    )
+
+@app.get("/v1/history/conversations")
+async def list_conversations(session: UserSession = Depends(get_session)):
+    """Liste les conversations de la session, triées par date de création"""
+    result = await history.list_conversations(session.session_id)
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    return JSONResponse(
+        content={
+            "conversations": [
+                {
+                    "id": conv["id"],
+                    "title": conv["title"],
+                    "created_at": conv["created_at"]
+                }
+                for conv in result
+            ]
+        },
+        headers={"X-Session-ID": session.session_id}
+    )
+
+@app.post("/v1/history/conversation")
+async def save_conversation(request: Request, session: UserSession = Depends(get_session)):
+    """Sauvegarde un message dans une conversation"""
+    data = await request.json()
+    
+    if "role" not in data or "message" not in data:
+        raise HTTPException(status_code=400, detail="role et message requis")
+    
+    result = await history.save_conversation(
+        session_id=session.session_id,
+        id=data.get("id"),
+        role=data["role"],
+        message=data["message"],
+        metadata=data.get("metadata")
+    )
+    
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    return JSONResponse(
+        content={
+            "status": "success",
+            "id": result["id"],
+            "title": result["title"],
+            "message_id": result["message_id"]
+        },
+        headers={"X-Session-ID": session.session_id}
+    )
+
+@app.delete("/v1/history/conversation/{id}")
+async def delete_conversation(id: str, session: UserSession = Depends(get_session)):
+    """Supprime une conversation complète"""
+    conv = await history.get_conversation(id)
+    if isinstance(conv, dict):
+        if conv.get("status") == "error":
+            raise HTTPException(status_code=404, detail="Conversation non trouvée")
+        if conv.get("session_id") != session.session_id:
+            raise HTTPException(status_code=403, detail="Non autorisé à supprimer cette conversation")
+    
+    result = await history.delete_conversation(id)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    return JSONResponse(
+        content=result,
+        headers={"X-Session-ID": session.session_id}
+    )
+
+@app.delete("/v1/history/session/{session_id}")
+async def delete_session_history(session_id: str, session: UserSession = Depends(get_session)):
+    """Supprime toutes les conversations d'une session"""
+    if session_id != session.session_id:
+        raise HTTPException(status_code=403, detail="Non autorisé à supprimer l'historique d'une autre session")
+    
+    result = await history.delete_by_session(session_id)
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    return JSONResponse(
+        content=result,
+        headers={"X-Session-ID": session.session_id}
+    )
 
 @app.get("/ready")
 async def ready():
     """Endpoint indiquant que le service est prêt"""
-    try:
-        if STORAGE_BACKEND == "redis":
-            redis_client.ping()
-        elif STORAGE_BACKEND == "mongo":
-            await mongo_client.admin.command('ping')
-        elif STORAGE_BACKEND == "chroma":
-            chroma_client.heartbeat()
-        return {"status": "ready"}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Service not ready: {str(e)}")
+    return await service.check_ready()
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000)

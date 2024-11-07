@@ -5,3 +5,5 @@ psutil
 pydantic
 httpx
 cachetools
+gputil
+setuptools

@@ -262,7 +262,7 @@ Format des événements :
 }
 
 3. Fin du stream :
-data: [DONE]
+data: {{"status": "completed"}}\n\n'
 
 Exemple d'utilisation :
 ```javascript
@@ -439,6 +439,157 @@ GET /ready
 - Support CORS
 - Gestion des erreurs avec codes HTTP appropriés
 
+8. Service History (MongoDB)
+-------------------------
+
+8.1 Historique des Conversations
+-----------------------------
+Endpoint : GET /v1/history/conversation/{id}
+Headers requis : X-Session-ID
+Description : Récupère une conversation complète avec tous ses messages
+Retour :
+{
+    "id": string,
+    "title": string,
+    "created_at": string,
+    "messages": [
+        {
+            "timestamp": string,
+            "role": string,
+            "message": any,
+            "metadata": {
+                "model": string,
+                "parameters": object,
+                ...
+            }
+        }
+    ]
+}
+
+8.2 Liste des Conversations
+------------------------
+Endpoint : GET /v1/history/conversations
+Headers requis : X-Session-ID
+Description : Liste toutes les conversations de la session courante
+Retour :
+{
+    "conversations": [
+        {
+            "id": string,
+            "title": string,
+            "created_at": string
+        }
+    ]
+}
+
+8.3 Sauvegarde d'un Message
+------------------------
+Endpoint : POST /v1/history/conversation
+Headers requis : X-Session-ID
+Description : Ajoute un message à une conversation existante ou crée une nouvelle conversation
+Corps :
+{
+    "id": string (optionnel),
+    "role": string,
+    "message": any,
+    "metadata": {
+        "model": string,
+        "temperature": number,
+        "parameters": object,
+        ...
+    }
+}
+Retour :
+{
+    "status": "success",
+    "id": string,
+    "title": string,
+    "message_id": string
+}
+
+8.4 Suppression d'une Conversation
+------------------------------
+Endpoint : DELETE /v1/history/conversation/{id}
+Headers requis : X-Session-ID
+Description : Supprime une conversation et tous ses messages
+Sécurité : Vérifie que la conversation appartient à la session courante
+Retour :
+{
+    "status": "success",
+    "message": string
+}
+
+8.5 Suppression de l'Historique d'une Session
+----------------------------------------
+Endpoint : DELETE /v1/history/session/{session_id}
+Headers requis : X-Session-ID
+Description : Supprime toutes les conversations de la session
+Sécurité : Vérifie que le session_id correspond à celui du header
+Retour :
+{
+    "status": "success",
+    "message": string,
+    "deleted_conversations": int
+}
+
+Notes Techniques pour History
+--------------------------
+- Stockage persistant dans MongoDB
+- Structure de conversation unifiée :
+  * Une conversation contient un tableau de messages
+  * Le titre est généré à partir du premier message
+  * Chaque message inclut son horodatage et ses métadonnées
+- Tri automatique des conversations par date de création (plus récente en premier)
+- Timestamps en format ISO 8601
+- Authentification via X-Session-ID header
+- Isolation des données par session
+- Suppression en cascade (la suppression d'une conversation supprime tous ses messages)
+
+Codes d'Erreur Spécifiques
+------------------------
+- 400 : Paramètres manquants ou invalides
+- 403 : Tentative d'accès à une conversation d'une autre session
+- 404 : Conversation non trouvée
+- 500 : Erreur interne du serveur
+
+Exemples d'Utilisation
+--------------------
 ```javascript
-// Exemple
-</rewritten_file>
+const headers = {
+    'X-Session-ID': 'votre-session-id',
+    'Content-Type': 'application/json'
+};
+
+// Créer une nouvelle conversation
+const newConv = await fetch('/v1/history/conversation', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+        role: "user",
+        message: "Bonjour!"
+    })
+});
+
+// Ajouter à une conversation existante
+await fetch('/v1/history/conversation', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+        id: "conversation-id",
+        role: "assistant",
+        message: "Bonjour! Comment puis-je vous aider?"
+    })
+});
+
+// Supprimer une conversation
+await fetch('/v1/history/conversation/conversation-id', {
+    method: 'DELETE',
+    headers
+});
+
+// Supprimer tout l'historique de la session
+await fetch('/v1/history/session/votre-session-id', {
+    method: 'DELETE',
+    headers
+});
+```
