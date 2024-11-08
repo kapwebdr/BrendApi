@@ -83,18 +83,18 @@ class MediaGenerator:
                 model_kwargs["torch_dtype"] = self.torch_dtype
                 if "variant" in model_kwargs:
                     del model_kwargs["variant"]
-            
+            model_cache_path = path.join(self.model_cache_dir, model_config["model_id"])
             if model_config['type'] == 'text2image':
                 self.pipe = AutoPipelineForText2Image.from_pretrained(
                     model_config['model_id'],
-                    cache_dir=self.model_cache_dir,
+                    cache_dir=model_cache_path,
                     ignore_mismatched_sizes=True,
                     **model_kwargs
                 )
             elif model_config['type'] == 'image2image':
                 self.pipe = AutoPipelineForImage2Image.from_pretrained(
                     model_config['model_id'],
-                    cache_dir=self.model_cache_dir,
+                    cache_dir=model_cache_path,
                     ignore_mismatched_sizes=True,
                     **model_kwargs
                 )
@@ -104,6 +104,7 @@ class MediaGenerator:
             print(f"Modèle {model_type} chargé avec succès sur {self.device}")
             
         except Exception as e:
+            self.pipe = None
             print(f"Erreur lors du chargement du modèle: {str(e)}")
             raise
 
@@ -226,7 +227,7 @@ class MediaGenerator:
             model_config = self.get_model_config(model_type)
             model_info = {
                 "model_name": model_config["model_id"],
-                "model_file": model_config.get("model_file")
+                "model_file":[model_config.get("model_file"), "config.json", "tokenizer_config.json", "vocab.json", "scheduler_config.json"]
             }
             print(model_info)
             # Vérifier si le modèle doit être téléchargé
