@@ -91,85 +91,124 @@ async def load_model_endpoint(request: Request, session: UserSession = Depends(g
 @app.post("/v1/ai/generate")
 async def generate(request: Request, session: UserSession = Depends(get_session)):
     data = await request.json()
-    required_fields = {"model", "messages"}
+    required_fields = {"model"}
     if not all(field in data for field in required_fields):
         raise HTTPException(status_code=400, detail="Configuration LLM invalide")
     
-    available_models = load_models("/app/Config/models.json")
-    model_config = available_models[data["model"]]
-    prompt_template = get_prompt_template(model_config.get("template"),'/app/Config/models_template.json')
-    
-    formatted_prompt = format_prompt(
-        messages=data["messages"],
-        system_message=data.get("system", brenda_system),
-        prompt_template=prompt_template  #
-    )
-    print("formatted_prompt :: ",formatted_prompt)
-    # Stockage du prompt et de l'historique
-    await service.store_data(
-        key=f"{session.session_id}_last_prompt",
-        value={
-            "prompt": formatted_prompt,
-            "messages": data["messages"],
-            "model": data["model"]
-        },
-        collection="llm_history"
-    )
-    
-    if data.get("stream", False):
-        async def stream_response():
-            try:
-                async for response in llm_generator.generate_stream(
-                    prompt=formatted_prompt,
-                    session=session,
-                    model_name=data["model"],
-                    models=available_models,
-                    format_type=data.get("format_type", "chunk")
-                ):
-                    if response.type == "text":
-                        if response.metadata:
-                            yield f'data: {{"text": "{response.content}", "pause": "{response.metadata["pause"]}"}}\n\n'
-                        else:
-                            yield f'data: {{"text": "{response.content}"}}\n\n'
-                    elif response.type == "status":
-                        yield f'data: {{"status": "{response.content}", "text": "{response.metadata["complete_text"]}"}}\n\n'
-                    elif response.type == "error":
-                        yield f'data: {{"error": "{response.content}"}}\n\n'
-                        
-            except Exception as e:
-                yield f'data: {{"error": "{str(e)}"}}\n\n'
-
-        return StreamingResponse(
-            stream_response(),
-            media_type="text/event-stream",
-            headers={"X-Session-ID": session.session_id}
-        )
-    else:
-        try:
-            content = session.llm.invoke(formatted_prompt)
-            
-            # Stockage de la réponse
-            await service.store_data(
-                key=f"{session.session_id}_last_response",
-                value=content,
-                collection="llm_responses"
-            )
-            
-            return JSONResponse(
-                content={
-                    "choices": [
+    try:
+        # Récupération de l'historique des messages via le service storage
+        conversation_id = data.get("conversationId")
+        if conversation_id:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://storage:8000/v1/history/conversation/{conversation_id}",
+                    headers={"X-Session-ID": session.session_id}
+                )
+                
+                if response.status_code == 200:
+                    conversation = response.json()
+                    messages = [
                         {
-                            "message": {
-                                "role": "assistant",
-                                "content": content
-                            }
+                            "role": msg["role"],
+                            "content": msg["message"]
                         }
+                        for msg in conversation.get("messages", [])
+                        if not (
+                            isinstance(msg.get("metadata"), dict) and 
+                            msg["metadata"].get("isMedia", False)
+                        )
                     ]
-                },
+                    print(f"Messages récupérés: {len(messages)}")
+                else:
+                    raise HTTPException(
+                        status_code=response.status_code,
+                        detail="Erreur lors de la récupération de la conversation"
+                    )
+        else:
+            # Si pas de conversation_id, utilise les messages fournis directement
+            messages = [{"role": "user", "content": data.get("prompt")}]
+            if not messages:
+                raise HTTPException(status_code=400, detail="Messages ou conversation_id requis")
+
+        available_models = load_models("/app/Config/models.json")
+        model_config = available_models[data["model"]]
+        prompt_template = get_prompt_template(model_config.get("template"),'/app/Config/models_template.json')
+        
+        formatted_prompt = format_prompt(
+            messages=messages,
+            system_message=data.get("system", brenda_system),
+            prompt_template=prompt_template
+        )
+        print("formatted_prompt :: ", formatted_prompt)
+
+        # Stockage du prompt et de l'historique
+        await service.store_data(
+            key=f"{session.session_id}_last_prompt",
+            value={
+                "prompt": formatted_prompt,
+                "messages": messages,
+                "model": data["model"],
+                "conversation_id": conversation_id
+            },
+            collection="llm_history"
+        )
+        
+        if data.get("stream", False):
+            async def stream_response():
+                try:
+                    async for response in llm_generator.generate_stream(
+                        prompt=formatted_prompt,
+                        session=session,
+                        model_name=data["model"],
+                        models=available_models,
+                        format_type=data.get("format_type", "chunk")
+                    ):
+                        if response.type == "text":
+                            if response.metadata:
+                                yield f'data: {{"text": "{response.content}", "pause": "{response.metadata["pause"]}"}}\n\n'
+                            else:
+                                yield f'data: {{"text": "{response.content}"}}\n\n'
+                        elif response.type == "status":
+                            yield f'data: {{"status": "{response.content}", "text": "{response.metadata["complete_text"]}"}}\n\n'
+                        elif response.type == "error":
+                            yield f'data: {{"error": "{response.content}"}}\n\n'
+                            
+                except Exception as e:
+                    yield f'data: {{"error": "{str(e)}"}}\n\n'
+
+            return StreamingResponse(
+                stream_response(),
+                media_type="text/event-stream",
                 headers={"X-Session-ID": session.session_id}
             )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+        else:
+            try:
+                content = session.llm.invoke(formatted_prompt)
+                
+                # Stockage de la réponse
+                await service.store_data(
+                    key=f"{session.session_id}_last_response",
+                    value=content,
+                    collection="llm_responses"
+                )
+                
+                return JSONResponse(
+                    content={
+                        "choices": [
+                            {
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content
+                                }
+                            }
+                        ]
+                    },
+                    headers={"X-Session-ID": session.session_id}
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/v1/ai/session")
 async def session_status(session: UserSession = Depends(get_session)):

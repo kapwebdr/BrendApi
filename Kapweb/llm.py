@@ -221,11 +221,11 @@ def loadLlm(model):
         callback_manager=callback_manager,
         max_new_tokens= 16384,        # Augmenté de 2048 à 8192
         max_tokens=16384,
-        context_length= 16384,        # Augmenté de 2048 à 16384
+        context_length= 148951,        # Augmenté de 2048 à 16384
         temperature= 0.7,
         stream= True,
-        n_ctx= 16384,                  # Contexte maximal
-        n_batch= 16384, 
+        n_ctx= 148951,                  # Contexte maximal
+        n_batch= 148951, 
         n_gpu_layers=1, 
         top_p= 0.9,                   
         repeat_penalty= 1.1,
