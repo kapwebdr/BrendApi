@@ -429,20 +429,7 @@ POST /v1/files/directory/create
     "timestamp": string
 }
 
-POST /v1/files/directory/move
-- Déplace un répertoire
-- Corps: { 
-    "source": string,
-    "destination": string 
-}
-- Retour:
-{
-    "status": "success",
-    "message": string,
-    "timestamp": string
-}
-
-POST /v1/files/directory/compress
+POST /v1/files/compress
 - Compresse un répertoire en ZIP
 - Corps: { 
     "path": string,
@@ -546,6 +533,72 @@ GET /ready
 - Timestamps en format ISO 8601
 - Taille des chunks configurable (défaut: 8192 bytes)
 - Support des opérations asynchrones
+
+### Gestion des fichiers et répertoires
+
+POST /v1/files/move
+- Déplace un fichier ou un répertoire
+- Corps: { 
+    "source": string,      // Chemin source
+    "destination": string  // Chemin de destination
+}
+- Retour:
+{
+    "status": "success",
+    "message": string,     // Message indiquant si c'est un fichier ou dossier
+    "source": string,
+    "destination": string,
+    "timestamp": string    // Format ISO 8601
+}
+
+POST /v1/files/compress
+- Compresse un fichier ou répertoire en ZIP
+- Corps: { 
+    "path": string,           // Chemin du fichier/dossier à compresser
+    "zip_name": string,       // (optionnel) Nom du fichier zip de sortie
+    "is_directory": boolean   // (optionnel) Indique si c'est un dossier
+}
+- Retour: Stream d'événements SSE
+Format des événements:
+1. Pour la progression:
+{
+    "type": "progress",
+    "progress": number,      // Pourcentage (0-100)
+    "file": string,         // Fichier en cours
+    "total_files": number,  // Nombre total de fichiers
+    "current_file": number  // Numéro du fichier en cours
+}
+2. Pour le statut final:
+{
+    "type": "completed",
+    "status": "success",
+    "path": string,         // Chemin du ZIP créé
+    "size": number         // Taille en bytes
+}
+
+POST /v1/files/decompress
+- Décompresse un fichier ZIP
+- Corps: { 
+    "path": string,           // Chemin du fichier ZIP
+    "extract_path": string    // (optionnel) Chemin d'extraction
+}
+- Retour: Stream d'événements SSE
+Format des événements:
+1. Pour la progression:
+{
+    "type": "progress",
+    "progress": number,      // Pourcentage (0-100)
+    "file": string,         // Fichier en cours
+    "total_files": number,  // Nombre total de fichiers
+    "current_file": number  // Numéro du fichier en cours
+}
+2. Pour le statut final:
+{
+    "type": "completed",
+    "status": "success",
+    "path": string,         // Chemin d'extraction
+    "files_extracted": number // Nombre de fichiers extraits
+}
 
 8. Service History (MongoDB)
 -------------------------
@@ -701,3 +754,36 @@ await fetch('/v1/history/session/votre-session-id', {
     headers
 });
 ```
+
+POST /v1/files/preview
+- Renvoie le contenu d'un fichier pour prévisualisation
+- Corps: { 
+    "path": string    // Chemin du fichier
+}
+- Retour:
+{
+    "status": "success",
+    "mime_type": string,     // Type MIME du fichier
+    "content": string,       // Contenu (texte ou base64 pour binaire)
+    "size": number,          // Taille en bytes
+    "timestamp": string      // Format ISO 8601
+}
+
+Types de fichiers supportés:
+- Texte: txt, json, xml, md, etc.
+- Images: jpg, png, gif, webp, etc.
+- Audio: mp3, wav, ogg, etc.
+- Vidéo: mp4, webm, etc.
+- PDF: pdf
+
+Limitations:
+- Taille maximale: 10MB
+- Encodage texte: UTF-8
+- Contenu binaire: encodé en base64
+
+Codes d'erreur:
+- 400: Chemin non fourni
+- 404: Fichier non trouvé
+- 413: Fichier trop volumineux
+- 415: Type de fichier non supporté
+- 500: Erreur de lecture

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, AsyncGenerator, Callable, Any
 from dataclasses import dataclass
 from datetime import datetime
+import mimetypes
 
 @dataclass
 class StreamResponse:
@@ -45,7 +46,7 @@ class FileManager:
         """Valide et retourne un chemin sécurisé"""
         clean_path = Path(path).resolve().relative_to(Path(path).resolve().anchor)
         full_path = (self.base_path / clean_path).resolve()
-        print('full_path', full_path)
+        print('full_path',path, full_path, clean_path,Path(path),Path(path).resolve().anchor)
         
         if not str(full_path).startswith(str(self.base_path)):
             raise ValueError("Chemin non autorisé")
@@ -64,19 +65,46 @@ class FileManager:
         except Exception as e:
             return {"error": str(e)}
 
-    async def move_directory(self, source: str, destination: str) -> Dict:
-        """Déplace un dossier"""
+    async def move(self, source: str, destination: str) -> Dict[str, Any]:
+        """
+        Déplace un fichier ou un répertoire vers une destination existante
+        """
         try:
-            src_path = self._validate_path(source)
-            dst_path = self._validate_path(destination)
-            shutil.move(str(src_path), str(dst_path))
+            source_path = self._validate_path(source)
+            dest_path = self._validate_path(destination)
+
+            if not source_path.exists():
+                return {"error": f"Le chemin source n'existe pas: {source}"}
+
+            # Vérifier que la destination existe et est un répertoire
+            if not dest_path.is_dir():
+                return {"error": f"La destination doit être un répertoire existant: {destination}"}
+
+            # Construire le chemin complet de destination
+            final_dest = dest_path / source_path.name
+
+            # Vérifier qu'on ne déplace pas un répertoire dans lui-même
+            if source_path.is_dir():
+                if str(dest_path).startswith(str(source_path)):
+                    return {"error": "Impossible de déplacer un répertoire dans lui-même"}
+
+            # Vérifier si la destination finale existe déjà
+            if final_dest.exists():
+                return {"error": f"Un élément existe déjà à la destination: {final_dest}"}
+
+            # Déplacer le fichier ou le dossier
+            shutil.move(str(source_path), str(final_dest))
+
             return {
                 "status": "success",
-                "message": f"Dossier déplacé de {source} vers {destination}",
-                "timestamp": str(datetime.now())
+                "message": f"{'Dossier' if source_path.is_dir() else 'Fichier'} déplacé avec succès",
+                "source": source,
+                "destination": str(final_dest.relative_to(self.base_path)),
+                "timestamp": datetime.now().isoformat()
             }
+
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"Erreur lors du déplacement: {str(e)}"}
 
     async def save_file(self, file_path: str, content: bytes) -> Dict:
         """Sauvegarde un fichier"""
@@ -88,20 +116,6 @@ class FileManager:
                 "status": "success",
                 "message": f"Fichier sauvegardé: {file_path}",
                 "size": len(content),
-                "timestamp": str(datetime.now())
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-    async def move_file(self, source: str, destination: str) -> Dict:
-        """Déplace un fichier"""
-        try:
-            src_path = self._validate_path(source)
-            dst_path = self._validate_path(destination)
-            shutil.move(str(src_path), str(dst_path))
-            return {
-                "status": "success",
-                "message": f"Fichier déplacé de {source} vers {destination}",
                 "timestamp": str(datetime.now())
             }
         except Exception as e:
@@ -184,49 +198,53 @@ class FileManager:
         finally:
             self.reset()
 
-    async def compress_directory(self, path: str, zip_name: Optional[str] = None,
-                               callbacks: Optional[FileCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
-        """Compresse un dossier en ZIP avec progression"""
+    async def compress(self, path: str, zip_name: Optional[str] = None, is_directory: bool = False,
+                      callbacks: Optional[FileCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
+        """
+        Compresse un fichier ou un dossier en ZIP avec progression
+        
+        Args:
+            path: Chemin du fichier ou dossier à compresser
+            zip_name: Nom du fichier ZIP de sortie (optionnel)
+            is_directory: True si c'est un dossier, False si c'est un fichier
+            callbacks: Callbacks optionnels pour le suivi
+        """
         try:
-            dir_path = self._validate_path(path)
+            source_path = self._validate_path(path)
+            
             if not zip_name:
-                zip_name = f"{dir_path.name}.zip"
+                zip_name = f"{path}.zip"
+            
             zip_path = self._validate_path(zip_name)
-
-            # Liste tous les fichiers à compresser
-            files = []
-            total_size = 0
-            for root, _, filenames in os.walk(str(dir_path)):
-                for filename in filenames:
-                    file_path = Path(root) / filename
-                    files.append((file_path, file_path.relative_to(dir_path)))
-                    total_size += file_path.stat().st_size
-
-            # Compression avec progression
-            processed_size = 0
-            with zipfile.ZipFile(str(zip_path), 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file_path, arc_name in files:
-                    if self._stop_event.is_set() or (callbacks and callbacks.should_stop()):
-                        yield StreamResponse(type="status", content="stopped")
-                        return
-
-                    zipf.write(str(file_path), str(arc_name))
-                    processed_size += file_path.stat().st_size
-                    progress = (processed_size / total_size) * 100
-
-                    if callbacks and callbacks.on_progress:
-                        callbacks.on_progress(progress, f"Compressing {arc_name}")
-
-                    yield StreamResponse(
-                        type="progress",
-                        content=str(progress),
-                        metadata={
-                            "file": str(arc_name),
-                            "processed_bytes": processed_size,
-                            "total_bytes": total_size
-                        }
-                    )
-
+            
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                if is_directory:
+                    # Parcourir tous les dossiers et fichiers
+                    for root, dirs, files in os.walk(source_path):
+                        # Calculer le chemin relatif pour le zip
+                        rel_path = os.path.relpath(root, source_path)
+                        
+                        # Ajouter le dossier courant (même vide)
+                        if rel_path != '.':
+                            # Ajouter un slash à la fin pour indiquer que c'est un dossier
+                            zip_path_entry = os.path.join(rel_path, '')
+                            zipf.write(root, zip_path_entry)
+                        
+                        # Ajouter tous les fichiers du dossier courant
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.join(rel_path, file)
+                            zipf.write(file_path, arcname)
+                            
+                            if callbacks:
+                                await callbacks.on_progress(file, 0)
+                else:
+                    # Cas d'un fichier unique
+                    zipf.write(source_path, os.path.basename(source_path))
+                    
+                    if callbacks:
+                        await callbacks.on_progress(os.path.basename(source_path), 100)
+            
             if callbacks and callbacks.on_complete:
                 callbacks.on_complete(str(zip_path))
 
@@ -272,6 +290,10 @@ class FileManager:
             dir_path = self._validate_path(path)
             items = []
             
+            # Séparer les dossiers et les fichiers
+            directories = []
+            files = []
+            
             for item in dir_path.iterdir():
                 item_info = {
                     "name": item.name,
@@ -279,7 +301,18 @@ class FileManager:
                     "size": item.stat().st_size if item.is_file() else None,
                     "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
                 }
-                items.append(item_info)
+                
+                if item.is_dir():
+                    directories.append(item_info)
+                else:
+                    files.append(item_info)
+            
+            # Trier les dossiers et fichiers par nom
+            directories.sort(key=lambda x: x["name"].lower())
+            files.sort(key=lambda x: x["name"].lower())
+            
+            # Combiner les listes triées
+            items = directories + files
 
             return {
                 "status": "success",
@@ -289,6 +322,84 @@ class FileManager:
             }
         except Exception as e:
             return {"error": str(e)}
+
+    async def rename(self, path: str, new_name: str) -> Dict[str, Any]:
+        """
+        Renomme un fichier ou un répertoire
+        """
+        try:
+            source_path = self._validate_path(path)
+            
+            if not source_path.exists():
+                return {"error": f"Le chemin n'existe pas: {path}"}
+                
+            # Vérifier que le nouveau nom est valide
+            if '/' in new_name or '\\' in new_name:
+                return {"error": "Le nouveau nom ne peut pas contenir de séparateur de chemin"}
+                
+            # Construire le nouveau chemin
+            new_path = source_path.parent / new_name
+            
+            # Vérifier que la destination n'existe pas déjà
+            if new_path.exists():
+                return {"error": f"Un élément avec ce nom existe déjà: {new_name}"}
+                
+            # Renommer le fichier ou le dossier
+            source_path.rename(new_path)
+            
+            return {
+                "status": "success",
+                "message": f"{'Dossier' if source_path.is_dir() else 'Fichier'} renommé avec succès",
+                "old_path": path,
+                "new_path": str(new_path.relative_to(self.base_path)),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {"error": f"Erreur lors du renommage: {str(e)}"}
+
+    async def preview(self, path: str) -> Dict[str, Any]:
+        """
+        Renvoie le contenu d'un fichier pour prévisualisation
+        Supporte: texte, images, pdf, audio, vidéo
+        """
+        try:
+            file_path = self._validate_path(path)
+            
+            if not file_path.exists():
+                return {"error": "Fichier non trouvé"}
+                
+            # Obtenir le type MIME
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            if not mime_type:
+                mime_type = 'application/octet-stream'
+                
+            # Limite de taille pour la prévisualisation (ex: 10MB)
+            if file_path.stat().st_size > 10 * 1024 * 1024:
+                return {"error": "Fichier trop volumineux pour la prévisualisation"}
+                
+            # Lecture du contenu selon le type
+            if mime_type.startswith('text/'):
+                # Fichiers texte
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            elif mime_type.startswith(('image/', 'audio/', 'video/', 'application/pdf')):
+                # Fichiers binaires (images, audio, vidéo, pdf)
+                with open(file_path, 'rb') as f:
+                    content = base64.b64encode(f.read()).decode('utf-8')
+            else:
+                return {"error": "Type de fichier non supporté pour la prévisualisation"}
+                
+            return {
+                "status": "success",
+                "mime_type": mime_type,
+                "content": content,
+                "size": file_path.stat().st_size,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {"error": f"Erreur lors de la prévisualisation: {str(e)}"}
 
 # Instance globale du gestionnaire de fichiers
 file_manager = FileManager() 

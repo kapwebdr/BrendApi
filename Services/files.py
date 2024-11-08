@@ -57,12 +57,12 @@ async def upload_files(
     return JSONResponse(content={"uploads": results})
 
 @app.post("/v1/files/move")
-async def move_file(request: Request):
+async def move_item(request: Request):
     data = await request.json()
-    if not all(k in data for k in ["source", "destination"]):
+    if "source" not in data or "destination" not in data:
         raise HTTPException(status_code=400, detail="Source et destination requises")
     
-    result = await file_manager.move_file(data["source"], data["destination"])
+    result = await file_manager.move(data["source"], data["destination"])
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return JSONResponse(content=result)
@@ -128,16 +128,17 @@ async def stream_file(request: Request):
         media_type="text/event-stream"
     )
 
-@app.post("/v1/files/directory/compress")
-async def compress_directory(request: Request):
+@app.post("/v1/files/compress")
+async def compress(request: Request):
     data = await request.json()
     if "path" not in data:
         raise HTTPException(status_code=400, detail="Chemin requis")
     
     async def stream_response():
-        async for response in file_manager.compress_directory(
-            data["path"],
-            data.get("zip_name")
+        async for response in file_manager.compress(
+            path=data["path"],
+            zip_name=data.get("zip_name"),
+            is_directory=data.get("is_directory", False)
         ):
             if response.type == "progress":
                 yield f'data: {{"progress": {response.content}, "file": "{response.metadata["file"]}"}}\n\n'
@@ -148,9 +149,6 @@ async def compress_directory(request: Request):
                     yield f'data: {{"status": "{response.content}"}}\n\n'
             elif response.type == "error":
                 yield f'data: {{"error": "{response.content}"}}\n\n'
-        
-        yield 'data: [DONE]\n\n'
-
     return StreamingResponse(
         stream_response(),
         media_type="text/event-stream"
@@ -184,6 +182,28 @@ async def list_directory(request: Request):
 async def ready():
     """Endpoint indiquant que le service est prêt"""
     return await service.check_ready()
+
+@app.post("/v1/files/rename")
+async def rename_item(request: Request):
+    data = await request.json()
+    if "path" not in data or "new_name" not in data:
+        raise HTTPException(status_code=400, detail="Chemin et nouveau nom requis")
+    
+    result = await file_manager.rename(data["path"], data["new_name"])
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return JSONResponse(content=result)
+
+@app.post("/v1/files/preview")
+async def preview_file(request: Request):
+    data = await request.json()
+    if "path" not in data:
+        raise HTTPException(status_code=400, detail="Chemin requis")
+    
+    result = await file_manager.preview(data["path"])
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return JSONResponse(content=result)
 
 if __name__ == "__main__":
     import uvicorn
