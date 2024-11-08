@@ -97,7 +97,7 @@ Toutes les fonctionnalités sont accessibles via l'endpoint unifié :
 
 POST /v1/ai/process
 
-Voir `api.txt` pour la documentation complète des endpoints.
+Voir `services.api.txt` pour la documentation complète des endpoints.
 
 ## 🔧 Configuration
 

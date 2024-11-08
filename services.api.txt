@@ -600,6 +600,32 @@ Format des événements:
     "files_extracted": number // Nombre de fichiers extraits
 }
 
+POST /v1/files/rename
+- Renomme un fichier ou un répertoire
+- Corps: { 
+    "path": string,       // Chemin de l'élément à renommer
+    "new_name": string    // Nouveau nom (sans séparateur de chemin)
+}
+- Retour:
+{
+    "status": "success",
+    "message": string,     // Message indiquant si c'est un fichier ou dossier
+    "old_path": string,    // Ancien chemin
+    "new_path": string,    // Nouveau chemin
+    "timestamp": string    // Format ISO 8601
+}
+
+Limitations:
+- Le nouveau nom ne peut pas contenir de séparateurs de chemin (/ ou \)
+- L'élément à renommer doit exister
+- Le nouveau nom ne doit pas déjà exister dans le même dossier
+
+Codes d'erreur:
+- 400: Chemin source non trouvé
+- 400: Nouveau nom invalide (contient des séparateurs)
+- 409: Un élément existe déjà avec ce nom
+- 500: Erreur pendant le renommage
+
 8. Service History (MongoDB)
 -------------------------
 
