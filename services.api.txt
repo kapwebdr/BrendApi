@@ -813,3 +813,173 @@ Codes d'erreur:
 - 413: Fichier trop volumineux
 - 415: Type de fichier non supporté
 - 500: Erreur de lecture
+
+# Ajout dans la section "Service Files API"
+
+### Gestion de l'Index ChromaDB
+
+POST /v1/files/index
+- Indexe un fichier ou un répertoire dans ChromaDB
+- Corps: { 
+    "path": string,           // Chemin de l'élément à indexer
+    "is_directory": boolean,  // true si c'est un dossier
+    "metadata": object       // Métadonnées optionnelles
+}
+- Retour:
+{
+    "status": "success",
+    "message": string,
+    "timestamp": string
+}
+
+GET /v1/files/index/{path}
+- Récupère les informations d'un élément indexé
+- Retour:
+{
+    "path": string,
+    "type": "file" | "directory",
+    "content": string,        // Base64 pour les fichiers
+    "size": number,          // Pour les fichiers
+    "metadata": object,
+    "created_at": string
+}
+
+GET /v1/files/index
+- Liste tous les éléments indexés
+- Paramètres query:
+    - type: string (optionnel) - Filtre par type ("file" ou "directory")
+- Retour:
+{
+    "items": [
+        {
+            "path": string,
+            "type": string,
+            "metadata": object,
+            "created_at": string
+        }
+    ]
+}
+
+DELETE /v1/files/index/{path}
+- Supprime un élément de l'index
+- Retour:
+{
+    "status": "success",
+    "message": string
+}
+
+POST /v1/files/index/search
+- Recherche dans les éléments indexés
+- Corps: {
+    "query": string,
+    "type": string,         // Optionnel, filtre par type
+    "n_results": number     // Optionnel, défaut: 10
+}
+- Retour:
+{
+    "results": [
+        {
+            "id": string,           // Identifiant unique
+            "path": string,         // Chemin du fichier/dossier
+            "type": string,         // "file" ou "directory"
+            "metadata": object,      // Métadonnées personnalisées
+            "distance": number,      // Score de similarité (0-1)
+            "document": object      // Contenu indexé
+        }
+    ]
+}
+
+Notes Techniques pour l'Indexation:
+- Utilise ChromaDB comme backend vectoriel
+- Indexation automatique du contenu des fichiers
+- Support des métadonnées personnalisées
+- Recherche sémantique sur le contenu
+- Indexation récursive des dossiers
+- Formats supportés identiques à /preview
+- Taille maximale par fichier: 10MB
+- Mise à jour automatique lors des modifications
+- Persistance des données
+- Recherche par similarité vectorielle
+- Support du filtrage par type et métadonnées
+- Gestion des versions de documents
+
+6. Service Storage
+----------------
+
+6.1 Stockage Général
+------------------
+Endpoint : POST /v1/storage/set
+Corps :
+{
+    "key": string,
+    "value": any,
+    "collection": string  // Optionnel, défaut: "default"
+}
+Retour :
+{
+    "status": "success",
+    "key": string
+}
+
+6.2 Récupération
+--------------
+Endpoint : GET /v1/storage/get/{collection}/{key}
+Retour : Les données stockées ou 404 si non trouvées
+
+6.3 Suppression
+-------------
+Endpoint : DELETE /v1/storage/delete/{collection}/{key}
+Retour :
+{
+    "status": "success",
+    "key": string
+}
+
+6.4 Liste des Données
+------------------
+Endpoint : GET /v1/storage/list/{collection}
+Paramètres query:
+- pattern: string (optionnel, défaut: "*")
+Retour : Liste des clés ou documents selon le backend
+
+6.5 Recherche
+-----------
+Endpoint : POST /v1/storage/search
+Corps :
+{
+    "query": string,
+    "collection": string,  // Optionnel, défaut: "default"
+    "n_results": number   // Optionnel, défaut: 10
+}
+Retour :
+{
+    "results": [
+        {
+            "id": string,
+            "document": object,
+            "metadata": object,
+            "distance": number  // Pour ChromaDB uniquement
+        }
+    ]
+}
+
+Notes Techniques:
+- Supporte trois backends: Redis, MongoDB, ChromaDB
+- Configuration via variables d'environnement:
+  - STORAGE_BACKEND: "redis" | "mongo" | "chroma"
+  - REDIS_HOST: string
+  - REDIS_PORT: number
+  - MONGO_URL: string
+  - MONGO_DB: string
+  - CHROMA_PERSIST_DIR: string
+- Gestion automatique des conversions JSON
+- Support des métadonnées pour ChromaDB
+- Recherche vectorielle disponible uniquement avec ChromaDB
+- Persistance des données selon le backend choisi
+- Gestion des erreurs avec codes HTTP standards
+
+Codes d'erreur:
+- 400: Paramètres manquants ou invalides
+- 404: Données non trouvées
+- 500: Erreur interne du service
+

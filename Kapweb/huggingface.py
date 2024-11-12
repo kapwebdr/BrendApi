@@ -16,7 +16,24 @@ async def get_model_files(model_name):
 async def download_model(model):
     base_url = "https://huggingface.co"
     model_name = model['model_name']
-    model_files = await get_model_files(model_name)
+    print(model['model_file'])
+    # Déterminer les fichiers à télécharger
+    if 'model_file' in model and isinstance(model['model_file'], list):
+        all_files = await get_model_files(model_name)
+        print(all_files,model['model_file'])
+        model_files = [f for f in all_files if f in model['model_file']]
+        missing_files = [f for f in model['model_file'] if f not in model_files]
+        if missing_files:
+            print(f"Fichiers manquants dans le modèle Hugging Face : {missing_files}")
+        
+    elif 'model_file' in model and isinstance(model['model_file'], str):
+        # Si model_file est une chaîne, télécharger uniquement ce fichier
+        model_files = [model['model_file']]
+    else:
+        # Sinon, télécharger tous les fichiers du modèle
+        model_files = await get_model_files(model_name)
+    print(model_files)
+
     async def get_remote_size(model_url):
         async with aiohttp.ClientSession() as session:
             headers = {'Range': 'bytes=0-0'}
@@ -27,7 +44,7 @@ async def download_model(model):
                 content_range = response.headers.get('content-range', '')
                 return int(content_range.split('/')[-1]) if content_range else int(response.headers.get('content-length', 0))
 
-    # Télécharger chaque fichier du modèle
+    # Télécharger chaque fichier
     for model_file in model_files:
         model_url = f"{base_url}/{model_name}/resolve/main/{model_file}"
         save_path = path.join(path.dirname(__file__), "..", "Cache", "LlamaCppModel", 

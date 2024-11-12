@@ -8,7 +8,7 @@
     "Llama-3.2-3B-Instruct":
     {
        "model_name":"bartowski/Llama-3.2-3B-Instruct-uncensored-GGUF",
-       "model_file":"Llama-3.2-3B-Instruct-Q4_0.gguf",
+       "model_file":"Llama-3.2-3B-Instruct-uncensored-Q8_0.gguf",
        "template":"llama-3"
     },
     "Llama-3.2-11B-Vision-Instruct":

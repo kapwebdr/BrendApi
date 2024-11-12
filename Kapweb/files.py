@@ -401,5 +401,30 @@ class FileManager:
         except Exception as e:
             return {"error": f"Erreur lors de la prévisualisation: {str(e)}"}
 
+    async def save_file_base64(self, file_path: str, content: str, mime_type: str) -> Dict:
+        """Sauvegarde un fichier à partir de contenu base64"""
+        try:
+            full_path = self._validate_path(file_path)
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Décodage du contenu base64
+            try:
+                file_content = base64.b64decode(content)
+            except Exception:
+                return {"error": "Contenu base64 invalide"}
+                
+            # Écriture du fichier
+            full_path.write_bytes(file_content)
+            
+            return {
+                "status": "success",
+                "message": f"Fichier sauvegardé: {file_path}",
+                "size": len(file_content),
+                "mime_type": mime_type,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
 # Instance globale du gestionnaire de fichiers
 file_manager = FileManager() 

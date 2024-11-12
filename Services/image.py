@@ -11,6 +11,7 @@ import uuid
 import pytesseract
 from datetime import datetime
 from Kapweb.services import ServiceHelper
+import json
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -119,16 +120,26 @@ async def generate_image(request: Request, session: UserSession = Depends(get_se
             },
             collection="image_requests"
         )
-        
-        await media_generator.init_model(data.get("model_type", "sdxl/turbo"))
+
+        async def stream_response():
+            try:
+                await media_generator.init_model(data.get("model_type", "sdxl/turbo"))
+                async for response in media_generator.generate_image(
+                    prompt=data["prompt"],
+                    negative_prompt=data.get("negative_prompt", ""),
+                    width=data.get("width", 1024),
+                    height=data.get("height", 1024),
+                    steps=data.get("steps", 20)
+                ):
+                    if isinstance(response, dict):
+                        yield f"data: {json.dumps(response)}\n\n"
+                    else:
+                        yield f"data: {response}\n\n"
+            except Exception as e:
+                yield f'data: {{"error": "{str(e)}"}}\n\n'
+
         return StreamingResponse(
-            media_generator.generate_image(
-                prompt=data["prompt"],
-                negative_prompt=data.get("negative_prompt", ""),
-                width=data.get("width", 1024),
-                height=data.get("height", 1024),
-                steps=data.get("steps", 20)
-            ),
+            stream_response(),
             media_type="text/event-stream"
         )
     except Exception as e:
@@ -155,16 +166,26 @@ async def refine_image(request: Request, session: UserSession = Depends(get_sess
             },
             collection="image_requests"
         )
-        
-        await media_generator.init_model("sdxl/refiner")
+
+        async def stream_response():
+            try:
+                await media_generator.init_model("sdxl/refiner")
+                async for response in media_generator.refine_image_data(
+                    image=image,
+                    prompt=data["prompt"],
+                    negative_prompt=data.get("negative_prompt", ""),
+                    strength=data.get("strength", 0.3),
+                    steps=data.get("steps", 20)
+                ):
+                    if isinstance(response, dict):
+                        yield f"data: {json.dumps(response)}\n\n"
+                    else:
+                        yield f"data: {response}\n\n"
+            except Exception as e:
+                yield f'data: {{"error": "{str(e)}"}}\n\n'
+
         return StreamingResponse(
-            media_generator.refine_image_data(
-                image=image,
-                prompt=data["prompt"],
-                negative_prompt=data.get("negative_prompt", ""),
-                strength=data.get("strength", 0.3),
-                steps=data.get("steps", 20)
-            ),
+            stream_response(),
             media_type="text/event-stream"
         )
     except Exception as e:

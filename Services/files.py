@@ -6,7 +6,8 @@ from Kapweb.services import ServiceHelper
 from typing import List, Optional
 import uuid
 from datetime import datetime
-
+import httpx
+import base64
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -18,6 +19,7 @@ app.add_middleware(
 )
 
 service = ServiceHelper("files")
+storage_url = "http://storage:8000"
 
 @app.post("/v1/files/directory/create")
 async def create_directory(request: Request):
@@ -44,17 +46,37 @@ async def move_directory(request: Request):
 
 @app.post("/v1/files/upload")
 async def upload_files(
-    files: List[UploadFile] = File(...),
-    path: str = Form(...),
+    request: Request,
+    files: Optional[List[UploadFile]] = File(None),
+    path: Optional[str] = Form(None)
 ):
-    results = []
-    for file in files:
-        content = await file.read()
-        file_path = f"{path}/{file.filename}"
-        result = await file_manager.save_file(file_path, content)
-        results.append(result)
+    # Si c'est un upload multipart classique
+    if files and path:
+        results = []
+        for file in files:
+            content = await file.read()
+            file_path = f"{path}/{file.filename}"
+            result = await file_manager.save_file(file_path, content)
+            results.append(result)
+        return JSONResponse(content={"uploads": results})
     
-    return JSONResponse(content={"uploads": results})
+    # Si c'est un upload base64
+    try:
+        data = await request.json()
+        if all(k in data for k in ["content", "mime_type", "path"]):
+            result = await file_manager.save_file_base64(
+                data["path"],
+                data["content"],
+                data["mime_type"]
+            )
+            return JSONResponse(content={"uploads": [result]})
+    except:
+        pass
+        
+    raise HTTPException(
+        status_code=400,
+        detail="Format invalide. Utilisez soit multipart/form-data avec files et path, soit JSON avec content, mime_type et path"
+    )
 
 @app.post("/v1/files/move")
 async def move_item(request: Request):
@@ -204,6 +226,101 @@ async def preview_file(request: Request):
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])
     return JSONResponse(content=result)
+
+async def store_in_index(path: str, content: dict) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{storage_url}/v1/storage/set",
+            json={
+                "key": path,
+                "value": content,
+                "collection": "files_index"
+            }
+        )
+        return response.json()
+
+@app.post("/v1/files/index")
+async def index_item(request: Request):
+    data = await request.json()
+    if "path" not in data:
+        raise HTTPException(status_code=400, detail="Chemin requis")
+    
+    path = data["path"]
+    metadata = data.get("metadata", {})
+    is_directory = data.get("is_directory", False)
+    
+    try:
+        full_path = str(file_manager._validate_path(path))
+        
+        if is_directory:
+            content = {
+                "path": full_path,
+                "type": "directory",
+                "metadata": metadata,
+                "created_at": datetime.now().isoformat()
+            }
+        else:
+            # Pour les fichiers, on ajoute le contenu en base64
+            with open(full_path, 'rb') as f:
+                file_content = f.read()
+                content = {
+                    "path": full_path,
+                    "type": "file",
+                    "content": base64.b64encode(file_content).decode(),
+                    "size": len(file_content),
+                    "metadata": metadata,
+                    "created_at": datetime.now().isoformat()
+                }
+        
+        result = await store_in_index(path, content)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result["message"])
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/files/index/{path:path}")
+async def get_indexed_item(path: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{storage_url}/v1/storage/get/files_index/{path}")
+        if response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Élément non trouvé")
+        return response.json()
+
+@app.get("/v1/files/index")
+async def list_indexed_items(type: Optional[str] = None):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{storage_url}/v1/storage/list/files_index")
+        items = response.json()
+        
+        if type:
+            items = [item for item in items if item.get("type") == type]
+            
+        return JSONResponse(content={"items": items})
+
+@app.delete("/v1/files/index/{path:path}")
+async def delete_indexed_item(path: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(f"{storage_url}/v1/storage/delete/files_index/{path}")
+        return response.json()
+
+@app.post("/v1/files/index/search")
+async def search_indexed_items(request: Request):
+    data = await request.json()
+    if "query" not in data:
+        raise HTTPException(status_code=400, detail="Query requise")
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{storage_url}/v1/storage/search",
+            json={
+                "query": data["query"],
+                "collection": "files_index",
+                "n_results": data.get("n_results", 10)
+            }
+        )
+        return response.json()
 
 if __name__ == "__main__":
     import uvicorn

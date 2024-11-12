@@ -12,6 +12,9 @@ import asyncio
 from Kapweb.huggingface import download_model
 from typing import Callable, Optional, Dict, Any, AsyncGenerator
 from dataclasses import dataclass
+from PIL import Image
+from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 
 current_file = path.realpath(__file__)
 
@@ -48,6 +51,8 @@ class MediaGenerator:
         self.models_config_path = models_config_path or path.join(path.dirname(current_file),"..")
         self.model_cache_dir = path.join(self.cache_dir, "LlamaCppModel")
         self._stop_event = asyncio.Event()
+        self.progress_queue = Queue()
+        self.executor = ThreadPoolExecutor(max_workers=1)
         
     def get_model_config(self, model_type):
         self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
@@ -117,86 +122,96 @@ class MediaGenerator:
         """Réinitialise le générateur"""
         self._stop_event.clear()
 
-    async def generate_image(self, prompt, negative_prompt="", width=1024, height=1024, steps=20,
-                           callbacks: Optional[MediaCallbacks] = None) -> AsyncGenerator[StreamResponse, None]:
+    async def generate_image(self, prompt: str, negative_prompt: str = "", 
+                           width: int = 1024, height: int = 1024, steps: int = 20):
         try:
             if not self.pipe:
-                raise ValueError("Aucun modèle n'est chargé")
+                raise Exception("Modèle non initialisé")
 
-            # Génération avec progression
-            for step in range(steps):
-                if self._stop_event.is_set() or (callbacks and callbacks.should_stop()):
-                    yield StreamResponse(type="status", content="stopped")
-                    return
+            def callback_on_step_end(pipe, step_index, timestep, callback_kwargs):
+                progress = (step_index + 1) / steps * 100
+                self.progress_queue.put({"progress": progress})
+                return {"progress": progress}
 
-                progress = ((step + 1) / steps) * 100
-                if callbacks and callbacks.on_progress:
-                    callbacks.on_progress(progress, f"Étape {step + 1}/{steps}")
-                yield StreamResponse(type="progress", content=str(progress))
-                await asyncio.sleep(0.1)
+            def run_pipeline():
+                return self.pipe(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    guidance_scale=0.0,
+                    num_inference_steps=steps,
+                    callback_on_step_end=callback_on_step_end
+                )
 
-            # Génération de l'image
-            image = self.pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=width,
-                height=height,
-                num_inference_steps=steps,
-                guidance_scale=0.0
-            ).images[0]
+            future = self.executor.submit(run_pipeline)
 
-            # Conversion en base64
+            while not future.done():
+                try:
+                    if not self.progress_queue.empty():
+                        progress = self.progress_queue.get_nowait()
+                        yield progress
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    yield {"error": f"Erreur de progression: {str(e)}"}
+
+            result = future.result()
+            image = result.images[0]
+
             buffered = io.BytesIO()
             image.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            if callbacks and callbacks.on_complete:
-                callbacks.on_complete(img_str)
-
-            yield StreamResponse(
-                type="status",
-                content="completed",
-                metadata={"image": img_str}
-            )
-
+            yield {"status": "completed", "image": f"{img_str}"}
+            
         except Exception as e:
-            if callbacks and callbacks.on_error:
-                callbacks.on_error(e)
-            yield StreamResponse(type="error", content=str(e))
-        finally:
-            self.reset()
+            yield {"error": str(e)}
 
-    async def refine_image_data(self, image, prompt, negative_prompt="", strength=0.3, steps=20):
-        """Raffine une image fournie en données avec le refiner"""
+    async def refine_image_data(self, image: Image, prompt: str, negative_prompt: str = "",
+                               strength: float = 0.3, steps: int = 20):
         try:
             if not self.pipe:
-                raise ValueError("Aucun modèle n'est chargé")
+                raise Exception("Modèle non initialisé")
+
+            yield {"status": "starting", "prompt": prompt}
             
-            # Progression du raffinement
-            for step in range(steps):
-                progress = ((step + 1) / steps) * 100
-                yield f'data: {{"progress": {progress:.2f}}}\n\n'
-                await asyncio.sleep(0.1)
+            def callback_on_step_end(pipe, step_index, timestep, callback_kwargs):
+                progress = (step_index + 1) / steps * 100
+                self.progress_queue.put({"progress": progress})
+                return {"progress": progress}
 
-            # Raffinement de l'image
-            refined_image = self.pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                image=image,
-                num_inference_steps=steps,
-                strength=strength,
-                guidance_scale=0.0
-            ).images[0]
+            def run_pipeline():
+                return self.pipe(
+                    image=image,
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    strength=strength,
+                    num_inference_steps=steps,
+                    callback_on_step_end=callback_on_step_end
+                )
 
-            # Conversion en base64
+            future = self.executor.submit(run_pipeline)
+
+            while not future.done():
+                try:
+                    if not self.progress_queue.empty():
+                        progress = self.progress_queue.get_nowait()
+                        yield progress
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    yield {"error": f"Erreur de progression: {str(e)}"}
+
+            result = future.result()
+            refined = result.images[0]
+
             buffered = io.BytesIO()
-            refined_image.save(buffered, format="PNG")
+            refined.save(buffered, format="PNG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            yield f'data: {{"status": "completed" , "image": "{img_str}"}}\n\n'
-
+            yield {"status": "completed", "image": f"data:image/png;base64,{img_str}"}
+            
         except Exception as e:
-            yield f'data: {{"error": "Erreur lors du raffinement : {str(e)}"}}\n\n'
+            yield {"error": str(e)}
 
     def get_available_models(self):
         self.models_config = load_media_models( path.join(self.models_config_path, "image_models.json"))
@@ -227,7 +242,7 @@ class MediaGenerator:
             model_config = self.get_model_config(model_type)
             model_info = {
                 "model_name": model_config["model_id"],
-                "model_file":[model_config.get("model_file"), "config.json", "tokenizer_config.json", "vocab.json", "scheduler_config.json"]
+                "model_file": model_config.get("model_file")
             }
             print(model_info)
             # Vérifier si le modèle doit être téléchargé
@@ -239,6 +254,9 @@ class MediaGenerator:
             
         except Exception as e:
             yield f'data: {{"error": "Erreur lors du chargement du modèle: {str(e)}"}}\n\n'
+
+    def __del__(self):
+        self.executor.shutdown(wait=False)
 
 class MediaAnalyzer:
     def __init__(self, cache_dir=None):

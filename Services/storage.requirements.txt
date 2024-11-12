@@ -4,3 +4,4 @@ redis
 motor
 chromadb
 pydantic 
+pymongo

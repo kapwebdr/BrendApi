@@ -8,6 +8,7 @@ from Kapweb.session import SessionManager, UserSession
 import os
 import uuid
 from typing import Optional
+from datetime import datetime
 
 app = FastAPI()
 app.add_middleware(
@@ -208,6 +209,57 @@ async def delete_session_history(session_id: str, session: UserSession = Depends
 async def ready():
     """Endpoint indiquant que le service est prêt"""
     return await service.check_ready()
+
+@app.post("/v1/storage/files/index")
+async def index_file(request: Request):
+    """Indexe un fichier ou dossier dans ChromaDB"""
+    data = await request.json()
+    if not all(k in data for k in ["path", "content"]):
+        raise HTTPException(status_code=400, detail="Path et content requis")
+    
+    result = await storage.store_data(
+        key=data["path"],
+        value={
+            "path": data["path"],
+            "type": data.get("type", "file"),
+            "content": data["content"],
+            "size": data.get("size"),
+            "metadata": data.get("metadata", {}),
+            "created_at": datetime.now().isoformat()
+        },
+        collection="files_index"
+    )
+    
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+@app.get("/v1/storage/files/index")
+async def list_indexed_files(type: Optional[str] = None):
+    """Liste les fichiers indexés"""
+    result = await storage.list_data("files_index", type=type)
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return {"items": result}
+
+@app.post("/v1/storage/files/search")
+async def search_indexed_files(request: Request):
+    """Recherche dans les fichiers indexés"""
+    data = await request.json()
+    if "query" not in data:
+        raise HTTPException(status_code=400, detail="Query requise")
+    
+    where = {"type": data["type"]} if "type" in data else None
+    result = await storage.search_data(
+        query=data["query"],
+        collection="files_index",
+        n_results=data.get("n_results", 10),
+        where=where
+    )
+    
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return {"results": result}
 
 if __name__ == "__main__":
     import uvicorn

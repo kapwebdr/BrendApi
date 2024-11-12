@@ -5,6 +5,8 @@ from pymongo import MongoClient
 import chromadb
 import os
 import logging
+import base64
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,9 +78,16 @@ class StorageManager:
                 )
             elif self.backend == "chroma":
                 collection = self.client.get_or_create_collection(collection)
+                metadata = {}
+                if isinstance(value, dict):
+                    metadata = {
+                        "type": value.get("type", "file"),
+                        **(value.get("metadata", {}))
+                    }
                 collection.upsert(
                     documents=[json.dumps(value)],
-                    ids=[key]
+                    ids=[key],
+                    metadatas=[metadata]
                 )
             return {"status": "success", "key": key}
         except Exception as e:
@@ -117,7 +126,7 @@ class StorageManager:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    async def list_data(self, collection: str = "default", pattern: str = "*") -> List:
+    async def list_data(self, collection: str = "default", pattern: str = "*", type: str = None) -> List:
         """Liste les données disponibles dans le backend"""
         try:
             if self.backend == "redis":
@@ -127,7 +136,20 @@ class StorageManager:
                 return [doc["_id"] for doc in self.db[collection].find({}, {"_id": 1})]
             elif self.backend == "chroma":
                 collection = self.client.get_or_create_collection(collection)
-                return collection.get()["ids"]
+                where = {"type": type} if type else None
+                results = collection.get(where=where)
+                return [
+                    {
+                        "id": id,
+                        "document": json.loads(doc),
+                        "metadata": meta
+                    }
+                    for id, doc, meta in zip(
+                        results["ids"],
+                        results["documents"],
+                        results["metadatas"]
+                    )
+                ]
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
@@ -136,19 +158,23 @@ class StorageManager:
         try:
             if self.backend == "chroma":
                 collection = self.client.get_or_create_collection(collection)
+                where = kwargs.get("where")  # Pour filtrer par type si nécessaire
                 results = collection.query(
                     query_texts=[query],
-                    n_results=kwargs.get('n_results', 10)
+                    n_results=kwargs.get('n_results', 10),
+                    where=where
                 )
                 return [
                     {
                         "id": id,
                         "document": json.loads(doc),
+                        "metadata": meta,
                         "distance": distance
                     }
-                    for id, doc, distance in zip(
+                    for id, doc, meta, distance in zip(
                         results['ids'][0],
                         results['documents'][0],
+                        results['metadatas'][0],
                         results['distances'][0]
                     )
                 ]
