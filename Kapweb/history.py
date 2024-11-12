@@ -13,17 +13,8 @@ class HistoryManager:
             storage_manager: Instance de StorageManager existante (optionnel)
             backend: Type de backend à utiliser ("redis", "mongo", "chroma")
         """
-        if storage_manager:
-            self.storage = storage_manager
-        else:
-            self.storage = StorageManager(
-                backend=backend or os.getenv('STORAGE_BACKEND', 'mongo'),
-                mongo_url=os.getenv('MONGO_URL', 'mongodb://localhost:27017'),
-                mongo_db=os.getenv('MONGO_DB', 'default'),
-                redis_host=os.getenv('REDIS_HOST', 'localhost'),
-                redis_port=int(os.getenv('REDIS_PORT', 6379)),
-                chroma_persist_dir=os.getenv('CHROMA_PERSIST_DIR', './chroma_storage')
-            )
+        print('here')
+        self.storage = storage_manager
 
     async def save_conversation(self, 
         session_id: str,

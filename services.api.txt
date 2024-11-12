@@ -983,3 +983,38 @@ Codes d'erreur:
 - 404: Données non trouvées
 - 500: Erreur interne du service
 
+# Ajouter dans la section 6. Service Storage
+
+6.6 Liste des Collections
+----------------------
+Endpoint : GET /v1/storage/collections
+Paramètres query:
+- backend: string (optionnel) - "redis", "mongo" ou "chroma"
+Retour :
+{
+    "collections": [
+        "collection1",
+        "collection2",
+        ...
+    ]
+}
+
+6.7 Liste des Bases de Données
+--------------------------
+Endpoint : GET /v1/storage/databases
+Paramètres query:
+- backend: string (optionnel) - "redis", "mongo" ou "chroma"
+Retour :
+{
+    "databases": [
+        "database1",
+        "database2",
+        ...
+    ]
+}
+
+Notes spécifiques par backend:
+- Redis: 16 bases numérotées (0-15)
+- MongoDB: Liste des bases de données existantes
+- ChromaDB: Retourne ["default"] (pas de concept multi-base)
+

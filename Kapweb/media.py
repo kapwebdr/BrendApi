@@ -79,21 +79,22 @@ class MediaGenerator:
             print(f"Chargement du modèle: {model_config['name']}")
             
             # Vérifier si le modèle est dans le cache
-            model_path = path.join(self.model_cache_dir, model_config["model_id"])
-            if not path.exists(model_path):
-                raise ValueError(f"Le modèle n'est pas téléchargé: {model_type}")
+            #model_path = path.join(self.model_cache_dir, model_config["model_id"])
+            # if not path.exists(model_path):
+            #     raise ValueError(f"Le modèle n'est pas téléchargé: {model_type}")
             
             model_kwargs = model_config['config'].copy()
             if self.device == "cpu":
                 model_kwargs["torch_dtype"] = self.torch_dtype
                 if "variant" in model_kwargs:
                     del model_kwargs["variant"]
+                    
             model_cache_path = path.join(self.model_cache_dir, model_config["model_id"])
             if model_config['type'] == 'text2image':
                 self.pipe = AutoPipelineForText2Image.from_pretrained(
                     model_config['model_id'],
                     cache_dir=model_cache_path,
-                    ignore_mismatched_sizes=True,
+                    # ignore_mismatched_sizes=True,
                     **model_kwargs
                 )
             elif model_config['type'] == 'image2image':
@@ -244,10 +245,9 @@ class MediaGenerator:
                 "model_name": model_config["model_id"],
                 "model_file": model_config.get("model_file")
             }
-            print(model_info)
             # Vérifier si le modèle doit être téléchargé
-            async for chunk in download_model(model_info):
-                yield chunk
+            # async for chunk in download_model(model_info):
+            #     yield chunk
 
             # Initialiser le modèle
             await self.init_model(model_type)

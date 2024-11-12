@@ -24,12 +24,12 @@ service = ServiceHelper("storage")
 session_manager = SessionManager()
 storage = StorageManager(
     backend=os.getenv('STORAGE_BACKEND', 'redis'),
-    redis_host=os.getenv('REDIS_HOST', 'localhost'),
+    redis_host=os.getenv('REDIS_HOST', 'redis'),
     redis_port=os.getenv('REDIS_PORT', 6379)
 )
 history_storage = StorageManager(
     backend='mongo',  # Force MongoDB pour l'historique
-    mongo_url=os.getenv('MONGO_URL', 'mongodb://localhost:27017'),
+    mongo_url=os.getenv('MONGO_URL', 'mongodb://mongo:27017'),
     mongo_db=os.getenv('MONGO_DB', 'default')
 )
 history = HistoryManager(storage_manager=history_storage)
@@ -45,7 +45,7 @@ async def get_session(x_session_id: Optional[str] = Header(None)) -> UserSession
     return session
 
 @app.post("/v1/storage/set")
-async def store_data(request: Request):
+async def store_data(request: Request, backend: Optional[str] = None):
     data = await request.json()
     if not all(k in data for k in ["key", "value"]):
         raise HTTPException(status_code=400, detail="Key et value requis")
@@ -53,7 +53,8 @@ async def store_data(request: Request):
     result = await storage.store_data(
         key=data["key"],
         value=data["value"],
-        collection=data.get("collection", "default")
+        collection=data.get("collection", "default"),
+        backend=backend
     )
     
     if result.get("status") == "error":
@@ -61,8 +62,8 @@ async def store_data(request: Request):
     return result
 
 @app.get("/v1/storage/get/{collection}/{key}")
-async def get_data(collection: str, key: str):
-    result = await storage.get_data(key, collection)
+async def get_data(collection: str, key: str, backend: Optional[str] = None):
+    result = await storage.get_data(key, collection, backend=backend)
     if result is None:
         raise HTTPException(status_code=404, detail="Données non trouvées")
     if isinstance(result, dict) and result.get("status") == "error":
@@ -70,21 +71,21 @@ async def get_data(collection: str, key: str):
     return result
 
 @app.delete("/v1/storage/delete/{collection}/{key}")
-async def delete_data(collection: str, key: str):
-    result = await storage.delete_data(key, collection)
+async def delete_data(collection: str, key: str, backend: Optional[str] = None):
+    result = await storage.delete_data(key, collection, backend=backend)
     if result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result["message"])
     return result
 
 @app.get("/v1/storage/list/{collection}")
-async def list_data(collection: str, pattern: str = "*"):
-    result = await storage.list_data(collection, pattern)
+async def list_data(collection: str, pattern: str = "*", backend: Optional[str] = None):
+    result = await storage.list_data(collection, pattern, backend=backend)
     if isinstance(result, dict) and result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result["message"])
     return result
 
 @app.post("/v1/storage/search")
-async def search_data(request: Request):
+async def search_data(request: Request, backend: Optional[str] = None):
     data = await request.json()
     if "query" not in data:
         raise HTTPException(status_code=400, detail="Query requise")
@@ -92,7 +93,8 @@ async def search_data(request: Request):
     result = await storage.search_data(
         query=data["query"],
         collection=data.get("collection", "default"),
-        n_results=data.get("n_results", 10)
+        n_results=data.get("n_results", 10),
+        backend=backend
     )
     
     if isinstance(result, dict) and result.get("status") == "error":
@@ -260,6 +262,22 @@ async def search_indexed_files(request: Request):
     if isinstance(result, dict) and result.get("status") == "error":
         raise HTTPException(status_code=500, detail=result["message"])
     return {"results": result}
+
+@app.get("/v1/storage/collections")
+async def list_collections(backend: Optional[str] = None):
+    """Liste toutes les collections disponibles"""
+    result = await storage.list_collections(backend=backend)
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return {"collections": result}
+
+@app.get("/v1/storage/databases")
+async def list_databases(backend: Optional[str] = None):
+    """Liste toutes les bases de données disponibles"""
+    result = await storage.list_databases(backend=backend)
+    if isinstance(result, dict) and result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return {"databases": result}
 
 if __name__ == "__main__":
     import uvicorn
